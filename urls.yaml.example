@@ -1,0 +1,47 @@
+# Schema for dynamic URLs used in scraping operations
+# Supports variables like $inc that can be defined with different increment types
+
+urls:
+  # Example with $inc variable in query parameter (increment of 30, max 5000)
+  - name: "sxyprn"
+    url: "https://sxyprn.com/Dap.html?page=$inc"
+    type: "templated"
+    template_vars:
+      inc:
+        type: "increment"
+        start: 0
+        end: 4680
+        step: 30
+
+  # Example with $inc variable in path (increment of 1, max 100)
+  - name: "analvids_new"
+    url: "https://www.analvids.com/new-videos/$inc"
+    type: "templated"
+    template_vars:
+      inc:
+        type: "increment"
+        start: 1
+        end: 5
+        step: 1
+
+  # Example with $inc variable in path and fixed query parameters
+  - name: "anvids_dapnew"
+    url: "https://www.analvids.com/filter/$inc?niche=double_anal&general=release"
+    type: "templated"
+    template_vars:
+      inc:
+        type: "increment"
+        start: 0
+        end: 5
+        step: 1
+
+  # Example with $inc variable in path and fixed query parameters
+  - name: "anvids_dapmodels"
+    url: "https://www.analvids.com/models/niche/double_anal/page/$inc/"
+    type: "templated"
+    template_vars:
+      inc:
+        type: "increment"
+        start: 1
+        end: 30
+        step: 1
