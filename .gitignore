@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+data/
+*.csv
+*.db
+url_status_tracking.txt
+.env
+.venv/
+.pytest_cache/
+*.log
+.DS_Store
+*.csv
+prompt.config
+urls.yaml

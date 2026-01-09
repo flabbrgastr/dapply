@@ -1,0 +1,9 @@
+# Requirements for the web scraper system
+requests>=2.31.0
+beautifulsoup4>=4.12.2
+PyYAML>=6.0
+lxml>=4.9.0  # For HTML parsing with BeautifulSoup
+pandas>=2.0.0
+Flask>=2.0.0
+fastapi>=0.100.0
+uvicorn>=0.20.0

@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Performers Database Viewer</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+                background-color: #f5f5f5;
+            }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background-color: white;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+            }
+            .controls {
+                margin-bottom: 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            .add-form {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 20px;
+                padding: 15px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                background-color: #f9f9f9;
+            }
+            .add-form input,
+            .add-form button {
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            .add-form button {
+                background-color: #28a745;
+                color: white;
+                cursor: pointer;
+            }
+            .add-form button:hover {
+                background-color: #218838;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+            }
+            th,
+            td {
+                padding: 12px;
+                text-align: left;
+                border-bottom: 1px solid #ddd;
+            }
+            th {
+                background-color: #f2f2f2;
+                cursor: pointer;
+                user-select: none;
+            }
+            th:hover {
+                background-color: #e9e9e9;
+            }
+            tr:hover {
+                background-color: #f5f5f5;
+            }
+            .rating-input {
+                width: 60px;
+                text-align: center;
+                padding: 5px;
+            }
+            .update-btn {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            .update-btn:hover {
+                background-color: #0056b3;
+            }
+            .stats {
+                display: flex;
+                gap: 20px;
+                margin-bottom: 20px;
+                padding: 15px;
+                background-color: #e9f7fe;
+                border-radius: 5px;
+            }
+            .stat-item {
+                text-align: center;
+            }
+            .stat-number {
+                font-size: 24px;
+                font-weight: bold;
+                color: #007bff;
+            }
+            .stat-label {
+                font-size: 14px;
+                color: #666;
+            }
+            .nav-bar {
+                text-align: center;
+                margin-bottom: 20px;
+            }
+            .nav-bar a {
+                display: inline-block;
+                padding: 10px 20px;
+                margin: 0 10px;
+                background-color: #007bff;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+            }
+            .nav-bar a:hover {
+                background-color: #0056b3;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Performers Database Viewer</h1>
+
+            <div class="nav-bar">
+                <a href="/">Performers View</a>
+                <a href="/stats">View Statistics</a>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="total-performers">0</div>
+                    <div class="stat-label">Total Performers</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="rated-performers">0</div>
+                    <div class="stat-label">With Ratings</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="avg-rating">0.0</div>
+                    <div class="stat-label">Avg Rating</div>
+                </div>
+            </div>
+
+            <div class="add-form">
+                <input
+                    type="text"
+                    id="new-name"
+                    placeholder="New performer name"
+                />
+                <input
+                    type="text"
+                    id="new-rating"
+                    placeholder="Rating"
+                    maxlength="10"
+                />
+                <button onclick="addPerformer()">Add Performer</button>
+            </div>
+
+            <div class="controls">
+                <div>
+                    <strong>Sort by:</strong>
+                    <select id="sort-column" onchange="loadPerformers()">
+                        <option value="name">Name</option>
+                        <option value="id">ID</option>
+                        <option value="last_updated">Last Updated</option>
+                        <option value="crawls">Crawls</option>
+                        <option value="rating">Rating</option>
+                    </select>
+                    <select id="sort-order" onchange="loadPerformers()">
+                        <option value="asc">Ascending</option>
+                        <option value="desc">Descending</option>
+                    </select>
+                </div>
+                <div>
+                    <input
+                        type="text"
+                        id="search-input"
+                        placeholder="Search performers..."
+                        onkeyup="filterPerformers()"
+                    />
+                </div>
+            </div>
+
+            <table id="performers-table">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable('id')">ID</th>
+                        <th onclick="sortTable('name')">Name</th>
+                        <th onclick="sortTable('aka')">AKA</th>
+                        <th onclick="sortTable('crawls')">Crawls</th>
+                        <th onclick="sortTable('last_updated')">
+                            Last Updated
+                        </th>
+                        <th onclick="sortTable('rating')">Rating</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="performers-body">
+                    <!-- Data will be populated here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <script>
+            let performersData = [];
+            let currentSort = { column: "name", order: "asc" };
+
+            // Load performers when page loads
+            document.addEventListener("DOMContentLoaded", function () {
+                loadPerformers();
+            });
+
+            function loadPerformers() {
+                const sortColumn = document.getElementById("sort-column").value;
+                const sortOrder = document.getElementById("sort-order").value;
+
+                fetch(
+                    `/api/performers?sort_by=${sortColumn}&sort_order=${sortOrder}`,
+                )
+                    .then((response) => response.json())
+                    .then((data) => {
+                        performersData = data;
+                        renderPerformersTable(performersData);
+                        updateStats();
+                    })
+                    .catch((error) =>
+                        console.error("Error loading performers:", error),
+                    );
+            }
+
+            function renderPerformersTable(data) {
+                const tbody = document.getElementById("performers-body");
+                tbody.innerHTML = "";
+
+                data.forEach((performer) => {
+                    const row = document.createElement("tr");
+
+                    // Rating input with automatic saving
+                    const ratingCell = document.createElement("td");
+                    ratingCell.innerHTML = `
+                    <input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" onchange="updateRating(${performer.id})">
+                `;
+
+                    row.innerHTML = `
+                    <td>${performer.id}</td>
+                    <td>${performer.name}</td>
+                    <td>${performer.aka || ""}</td>
+                    <td>${performer.crawls || 0}</td>
+                    <td>${performer.last_updated || ""}</td>
+                `;
+                    row.appendChild(ratingCell);
+                    row.innerHTML += `<td><button class="update-btn" onclick="deletePerformer(${performer.id})">Delete</button></td>`;
+
+                    tbody.appendChild(row);
+                });
+            }
+
+            function updateRating(id) {
+                const ratingInput = document.getElementById(`rating-${id}`);
+                const rating = ratingInput.value;
+
+                fetch(`/api/performers/${id}`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ rating: rating }),
+                })
+                    .then((response) => {
+                        if (response.ok) {
+                            // Rating updated successfully - no need to reload table for auto-update
+                        } else {
+                            console.log(
+                                "Error updating rating for performer " + id,
+                            );
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error:", error);
+                    });
+            }
+
+            function addPerformer() {
+                const nameInput = document.getElementById("new-name");
+                const ratingInput = document.getElementById("new-rating");
+
+                const name = nameInput.value.trim();
+                const rating = ratingInput.value.trim();
+
+                if (!name) {
+                    alert("Please enter a performer name");
+                    return;
+                }
+
+                fetch("/api/performers", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ name: name, rating: rating }),
+                })
+                    .then((response) => {
+                        if (response.ok) {
+                            nameInput.value = "";
+                            ratingInput.value = "";
+                            alert("Performer added successfully!");
+                            loadPerformers(); // Reload to show new performer
+                        } else {
+                            response
+                                .json()
+                                .then((data) =>
+                                    alert(
+                                        data.error || "Error adding performer",
+                                    ),
+                                );
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error:", error);
+                        alert("Error adding performer");
+                    });
+            }
+
+            function deletePerformer(id) {
+                if (
+                    confirm("Are you sure you want to delete this performer?")
+                ) {
+                    fetch(`/api/performers/${id}`, {
+                        method: "DELETE",
+                    })
+                        .then((response) => {
+                            if (response.ok) {
+                                alert("Performer deleted successfully!");
+                                loadPerformers(); // Reload to show updated data
+                            } else {
+                                alert("Error deleting performer");
+                            }
+                        })
+                        .catch((error) => {
+                            console.error("Error:", error);
+                            alert("Error deleting performer");
+                        });
+                }
+            }
+
+            function sortTable(column) {
+                // Toggle sort direction if clicking the same column
+                if (currentSort.column === column) {
+                    currentSort.order =
+                        currentSort.order === "asc" ? "desc" : "asc";
+                } else {
+                    currentSort.column = column;
+                    currentSort.order = "asc";
+                }
+
+                // Update UI controls
+                document.getElementById("sort-column").value = column;
+                document.getElementById("sort-order").value = currentSort.order;
+
+                // Reload with new sort
+                loadPerformers();
+            }
+
+            function filterPerformers() {
+                const searchTerm = document
+                    .getElementById("search-input")
+                    .value.toLowerCase();
+                const filteredData = performersData.filter(
+                    (performer) =>
+                        performer.name.toLowerCase().includes(searchTerm) ||
+                        (performer.aka &&
+                            performer.aka.toLowerCase().includes(searchTerm)) ||
+                        (performer.rating &&
+                            performer.rating
+                                .toLowerCase()
+                                .includes(searchTerm)),
+                );
+                renderPerformersTable(filteredData);
+            }
+
+            function updateStats() {
+                document.getElementById("total-performers").textContent =
+                    performersData.length;
+
+                const ratedPerformers = performersData.filter(
+                    (p) => p.rating && p.rating.trim() !== "",
+                ).length;
+                document.getElementById("rated-performers").textContent =
+                    ratedPerformers;
+
+                const avgRating =
+                    performersData.reduce((sum, p) => {
+                        const rating = parseFloat(p.rating);
+                        return sum + (isNaN(rating) ? 0 : rating);
+                    }, 0) / performersData.length || 0;
+
+                document.getElementById("avg-rating").textContent =
+                    avgRating.toFixed(2);
+            }
+        </script>
+    </body>
+</html>

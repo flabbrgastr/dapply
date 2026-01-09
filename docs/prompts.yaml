@@ -1,0 +1,25 @@
+prompts:
+  - id: "v1_basic"
+    description: "Original refined extraction prompt"
+    template: |
+      Extract ONLY the names of female performers explicitly mentioned in the video titles.
+
+      Rules:
+      1. Return names separated by a comma if multiple females are present.
+      2. Ignore male names (e.g., Jules Jordan, Bruce Venture, Lexington Steele, Toni Ribas, Erik Everhard, David Perry, Ian Scott, Mike Angelo).
+      3. Ignore studios, websites, locations, or organizations (e.g., Brazzers, Naughty America, London, DDF Network, TamedTeens, HiSlut).
+      4. Do not include descriptive words, scene titles, or tags (e.g., "Darkside", "MILF", "Latina", "Intimate", "Creampie", "Hardcore").
+      5. If no female performer is named, output ONLY: NO_NAME
+      6. NO chatter. NO explanations. NO markdown formatting.
+
+      Analyze this Title:
+      {title}
+      Output:
+
+  - id: "v2_minimal"
+    description: "Ultra-minimal prompt for small models"
+    template: |
+      Female performers in title? 
+      Title: {title}
+      Rules: No men, no studios, comma-separated names, or "NO_NAME".
+      Result:
