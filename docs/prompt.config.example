@@ -1,0 +1,6 @@
+# General Credentials
+OPENAI_API_KEY = "***"
+OPENAI_API_BASE = "https://****/v1"
+
+# List of models to evaluate (comma-separated)
+MODELS = "mistral@mistral-tiny-latest, ollama@gemma3:1b, openrouter@nvidia/nemotron-nano-9b-v2:free"
