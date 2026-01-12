@@ -347,66 +347,53 @@ class Orchestator:
         session_known_urls = set()
 
         # Process URLs
-        if not stop_on_no_new:
-            # Regular batch processing
-            for i, url in enumerate(urls):
-                self.logger.info(f"Crawling {url}...")
-                response = scraper.scrape_batch(
-                    [url],
-                    max_concurrent=1,
-                    url_config_names={url: url_config_names.get(url, "default")},
-                    random_delay=None if i == 0 else random_delay_range,
-                )[0]
+        from extractor import extract_from_file
+        from scraper import ScrapeResult
+
+        for i, url in enumerate(urls):
+            self.logger.info(f"Crawling {url}...")
+            response = scraper.scrape_batch(
+                [url],
+                max_concurrent=1,
+                url_config_names={url: url_config_names.get(url, "default")},
+                random_delay=None if i == 0 else random_delay_range,
+            )[0]
+
+            if response.result == ScrapeResult.SUCCESS and response.filename:
+                self.logger.info(f"Indexing {url}...")
+                items = extract_from_file(response.filename)
+                
+                # Ad-hoc novelty check (always done to show count)
+                new_items, all_items = self._filter_novel_items(items, session_known_urls)
+                novelty_count = len(new_items)
+                self.logger.info(f"  -> {novelty_count} new items found")
+
+                # Mark as done with X<count> tag
+                self._process_scrape_response(response, tag=f"X{novelty_count}")
+
+                # Check if we should stop early (only if stop_on_no_new is True)
+                if stop_on_no_new and novelty_count == 0:
+                    if all_items:  # Page had items but none were new
+                        self.logger.info(
+                            f"--- NOVELTY ALERT: No new content found. Stopping early. ---"
+                        )
+                    else:  # Page had no items extracted at all (might be empty/invalid page)
+                        self.logger.info(
+                            f"--- EMPTY PAGE ALERT: No items found on page. Stopping early. ---"
+                        )
+
+                    # Mark only the VERY NEXT URL as AUTOEXIT to show where we stopped
+                    if i + 1 < len(urls):
+                        self.url_generator.mark_url_done(
+                            urls[i + 1], tag="AUTOEXIT"
+                        )
+                    break
+                elif all_items:
+                    # Update session_known_urls for the next page in same session
+                    for item in new_items:
+                        session_known_urls.add(item["item_url"])
+            else:
                 self._process_scrape_response(response)
-        else:
-            # Incremental processing with early exit
-            from extractor import extract_from_file
-            from scraper import ScrapeResult
-
-            for i, url in enumerate(urls):
-                self.logger.info(f"Crawling {url}...")
-                response = scraper.scrape_batch(
-                    [url],
-                    max_concurrent=1,
-                    url_config_names={url: url_config_names.get(url, "default")},
-                    random_delay=None if i == 0 else random_delay_range,
-                )[0]
-
-                if response.result == ScrapeResult.SUCCESS and response.filename:
-                    self.logger.info(f"Indexing {url}...")
-                    items = extract_from_file(response.filename)
-                    
-                    # Ad-hoc novelty check
-                    new_items, all_items = self._filter_novel_items(items, session_known_urls)
-                    novelty_count = len(new_items)
-                    self.logger.info(f"  -> {novelty_count} new items found")
-
-                    # Mark as done with X<count> tag
-                    self._process_scrape_response(response, tag=f"X{novelty_count}")
-
-                    # Check if current page has no new content or no items extracted at all
-                    if novelty_count == 0:
-                        if all_items:  # Page had items but none were new
-                            self.logger.info(
-                                f"--- NOVELTY ALERT: No new content found. Stopping early. ---"
-                            )
-                        else:  # Page had no items extracted at all (might be empty/invalid page)
-                            self.logger.info(
-                                f"--- EMPTY PAGE ALERT: No items found on page. Stopping early. ---"
-                            )
-
-                        # Mark only the VERY NEXT URL as AUTOEXIT to show where we stopped
-                        if i + 1 < len(urls):
-                            self.url_generator.mark_url_done(
-                                urls[i + 1], tag="AUTOEXIT"
-                            )
-                        break
-                    elif all_items:
-                        # Update session_known_urls for the next page in same session
-                        for item in new_items:
-                            session_known_urls.add(item["item_url"])
-                else:
-                    self._process_scrape_response(response)
 
     def _process_scrape_response(self, response, tag="X"):
         """Process a single scrape response and update status."""
