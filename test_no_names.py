@@ -129,7 +129,10 @@ def main():
     config_path = os.path.join(base_dir, 'docs', 'prompt.config')
     prompts_path = os.path.join(base_dir, 'docs', 'prompts.yaml')
     input_csv = os.path.join(base_dir, 'extracted.csv')
-    output_jsonl = os.path.join(base_dir, 'multi_model_test_results.jsonl')
+    
+    results_dir = os.path.join(base_dir, 'test', 'results')
+    os.makedirs(results_dir, exist_ok=True)
+    output_jsonl = os.path.join(results_dir, 'multi_model_test_results.jsonl')
     
     config = load_config(config_path)
     prompts = load_prompts(prompts_path)
@@ -181,8 +184,7 @@ def main():
 
     # Generate Report File Path early
     report_filename = f"test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-    results_dir = os.path.join(base_dir, 'test', 'results')
-    os.makedirs(results_dir, exist_ok=True)
+    # results_dir is already created above
     report_path = os.path.join(results_dir, report_filename)
     print(f"Report file: {report_path}")
     
