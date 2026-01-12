@@ -27,6 +27,9 @@ uv run pytest -v
 
 # Run the web viewer
 uv run python db_viewer.py
+
+# Run the orchestrator with default site
+uv run python orchestator.py -site anvids_dapmodels -n 30 --auto --delay 0.5 --no-stop --reset
 ```
 
 ## Code Style Guidelines

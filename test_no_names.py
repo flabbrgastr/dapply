@@ -5,6 +5,9 @@ import json
 import re
 import time
 import yaml
+import argparse
+import pandas as pd
+from datetime import datetime
 
 def load_config(config_path):
     config = {}
@@ -35,6 +38,37 @@ def clean_title(title):
     # Remove multiple spaces
     title = re.sub(r'\s+', ' ', title)
     return title.strip()
+
+def normalize_names(name_str, separator=','):
+    if not name_str or name_str.upper() == "NO_NAME":
+        return set()
+    
+    # Handle both comma and semicolon
+    names = re.split(r'[;,]', name_str)
+    return {n.strip().lower() for n in names if n.strip()}
+
+def calculate_metrics(expected_str, actual_str):
+    expected_set = normalize_names(expected_str, separator=';') # CSV uses ;
+    actual_set = normalize_names(actual_str, separator=',')     # LLM uses ,
+    
+    # If both are empty (NO_NAME), that's a match
+    if not expected_set and not actual_set:
+        return 1.0, 1.0, 1.0, True
+        
+    # If one is empty but not the other
+    if not expected_set or not actual_set:
+        return 0.0, 0.0, 0.0, False
+        
+    tp = len(expected_set.intersection(actual_set))
+    fp = len(actual_set - expected_set)
+    fn = len(expected_set - actual_set)
+    
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    exact_match = (expected_set == actual_set)
+    
+    return precision, recall, f1, exact_match
 
 def call_llm(config, model, prompt_template, title):
     cleaned = clean_title(title)
@@ -85,10 +119,16 @@ def call_llm(config, model, prompt_template, title):
     return "ERROR_MAX_RETRIES"
 
 def main():
-    config_path = '/Users/johannwaldherr/code/fg/dap/docs/prompt.config'
-    prompts_path = '/Users/johannwaldherr/code/fg/dap/docs/prompts.yaml'
-    input_csv = '/Users/johannwaldherr/code/fg/dap/extracted.csv'
-    output_jsonl = '/Users/johannwaldherr/code/fg/dap/multi_model_test_results.jsonl'
+    parser = argparse.ArgumentParser(description="Evaluate LLM Performer Extraction")
+    parser.add_argument("--limit", type=int, default=50, help="Number of samples to test per phase")
+    parser.add_argument("--skip-extraction", action="store_true", help="Skip the NO_NAME extraction phase")
+    args = parser.parse_args()
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, 'docs', 'prompt.config')
+    prompts_path = os.path.join(base_dir, 'docs', 'prompts.yaml')
+    input_csv = os.path.join(base_dir, 'extracted.csv')
+    output_jsonl = os.path.join(base_dir, 'multi_model_test_results.jsonl')
     
     config = load_config(config_path)
     prompts = load_prompts(prompts_path)
@@ -101,71 +141,102 @@ def main():
         # Fallback if config is missing the key
         models = [config.get('OPENAI_MODEL', 'ollama@gemma3:1b')]
     
-    # Load already processed (model, prompt_id, title) to skip
-    processed = set()
-    if os.path.exists(output_jsonl):
-        with open(output_jsonl, 'r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    res = json.loads(line)
-                    # Only skip if it actually succeeded
-                    if not res['output'].startswith("ERROR"):
-                        key = (res['model'], res['prompt_id'], res['title'])
-                        processed.add(key)
-                except:
-                    continue
-
-    print(f"Starting Multi-Model Test...")
+    print(f"Starting Multi-Model Evaluation...")
     print(f"Models: {models}")
     print(f"Prompts: {[p['id'] for p in prompts]}")
+    print(f"Limit: {args.limit}")
     print()
 
-    # Load ALL titles from extracted.csv
-    # Split into validation set (has performers) and extraction set (NO_NAME)
-    validation_titles = []  # (title, expected_performers)
-    extraction_titles = []  # titles with NO_NAME
+    # Load data
+    try:
+        df = pd.read_csv(input_csv)
+    except Exception as e:
+        print(f"Error reading {input_csv}: {e}")
+        return
+
+    # Split data
+    # Normalize 'performers' column to handle NaN
+    df['performers'] = df['performers'].fillna('')
     
-    with open(input_csv, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            title = row.get('title', '').strip()
-            perf = row.get('performers', '').strip()
-            
-            if not title:
-                continue
-                
-            if perf and perf.upper() != "NO_NAME":
-                # Use first 50 titles with known performers for validation
-                if len(validation_titles) < 50:
-                    validation_titles.append((title, perf))
-            else:
-                # All NO_NAME titles for extraction
-                extraction_titles.append(title)
+    # Validation Set: Has content in performers and not NO_NAME
+    validation_df = df[
+        (df['performers'].str.strip() != '') & 
+        (df['performers'].str.upper() != 'NO_NAME')
+    ].copy()
     
-    print(f"Loaded {len(validation_titles)} validation titles (with known performers)")
-    print(f"Loaded {len(extraction_titles)} extraction titles (NO_NAME)")
+    # Extraction Set: Empty or NO_NAME
+    extraction_df = df[
+        (df['performers'].str.strip() == '') | 
+        (df['performers'].str.upper() == 'NO_NAME')
+    ].copy()
+
+    # Limit validation set
+    if len(validation_df) > args.limit:
+        validation_df = validation_df.head(args.limit)
+    
+    print(f"Loaded {len(validation_df)} validation titles (Ground Truth available)")
+    print(f"Loaded {len(extraction_df)} extraction titles (NO_NAME)")
     print()
+
+    # Metrics storage
+    # {(model, prompt_id): {'tp': 0, 'fp': 0, 'fn': 0, 'exact': 0, 'total': 0, 'time': []}}
+    metrics = {}
+
+    processed = set()
+    # Load existing to skip? Maybe better to overwrite for evaluation runs to ensure consistent N
+    # But sticking to existing logic of appending to JSONL for history.
+    # However, for metrics calculation we need current run stats.
     
     results_count = 0
     
-    # Process validation set first
+    # Process validation set
     print("=" * 80)
     print("PHASE 1: VALIDATION (Testing against known performers)")
     print("=" * 80)
-    for title, expected in validation_titles:
+    
+    for idx, row in validation_df.iterrows():
+        title = row['title']
+        expected = row['performers']
+        
         print(f"\nTitle: {title[:70]}...")
         print(f"Expected: {expected}")
+        
+        title_f1_scores = []
         
         for model in models:
             for p in prompts:
                 prompt_id = p['id']
-                key = (model, prompt_id, title)
+                metric_key = (model, prompt_id)
+                if metric_key not in metrics:
+                    metrics[metric_key] = {'tp': 0, 'fp': 0, 'fn': 0, 'exact': 0, 'total': 0, 'sum_f1': 0.0, 'times': []}
                 
-                if key in processed:
-                    continue
-                
+                start_time = time.time()
                 output = call_llm(config, model, p['template'], title)
+                duration = time.time() - start_time
                 
+                # Calculate metrics
+                prec, rec, f1, is_exact = calculate_metrics(expected, output)
+                title_f1_scores.append(f1)
+                
+                # Add delay between calls to respect rate limits
+                time.sleep(3)
+                
+                # Update stats
+                # Re-calculate raw counts for global aggregation
+                exp_set = normalize_names(expected, separator=';')
+                act_set = normalize_names(output, separator=',')
+                tp = len(exp_set.intersection(act_set))
+                fp = len(act_set - exp_set)
+                fn = len(exp_set - act_set)
+                
+                metrics[metric_key]['tp'] += tp
+                metrics[metric_key]['fp'] += fp
+                metrics[metric_key]['fn'] += fn
+                metrics[metric_key]['exact'] += 1 if is_exact else 0
+                metrics[metric_key]['total'] += 1
+                metrics[metric_key]['sum_f1'] += f1
+                metrics[metric_key]['times'].append(duration)
+
                 result_entry = {
                     "title": title,
                     "model": model,
@@ -173,57 +244,157 @@ def main():
                     "output": output,
                     "expected": expected,
                     "phase": "validation",
-                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "rating": ""
+                    "timestamp": datetime.now().isoformat(),
+                    "precision": prec,
+                    "recall": rec,
+                    "f1": f1,
+                    "exact_match": is_exact,
+                    "duration_seconds": duration
                 }
                 
-                # Append result immediately
+                # Append result
                 with open(output_jsonl, 'a', encoding='utf-8') as fout:
                     fout.write(json.dumps(result_entry) + "\n")
                 
                 if not output.startswith("ERROR"):
-                    processed.add(key)
                     results_count += 1
-                    print(f"  [{model}|{prompt_id}] -> {output}")
+                    status = "✅" if is_exact else "❌"
+                    print(f"  [{model}|{prompt_id}] -> {output} {status} (F1: {f1:.2f})")
 
-    # Process extraction set
+    # Print Report
     print("\n" + "=" * 80)
-    print("PHASE 2: EXTRACTION (Processing NO_NAME titles)")
+    print("EVALUATION REPORT")
     print("=" * 80)
-    for title in extraction_titles:
-        print(f"\nTitle: {title[:70]}...")
+    
+    report_data = []
+    for (model, prompt_id), stats in metrics.items():
+        total = stats['total']
+        if total == 0:
+            continue
+            
+        # Micro-averaged metrics over the dataset
+        tp = stats['tp']
+        fp = stats['fp']
+        fn = stats['fn']
         
-        for model in models:
-            for p in prompts:
-                prompt_id = p['id']
-                key = (model, prompt_id, title)
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        # Macro F1 (average of individual F1 scores)
+        macro_f1 = stats['sum_f1'] / total if total > 0 else 0
+        
+        accuracy = stats['exact'] / total
+        avg_time = sum(stats['times']) / len(stats['times']) if stats['times'] else 0
+        
+        report_data.append({
+            "Model": model,
+            "Prompt": prompt_id,
+            "Accuracy (Exact)": f"{accuracy:.1%}",
+            "F1 (Micro)": f"{f1:.3f}",
+            "F1 (Macro)": f"{macro_f1:.3f}",
+            "Precision": f"{precision:.3f}",
+            "Recall": f"{recall:.3f}",
+            "Avg Time (s)": f"{avg_time:.2f}"
+        })
+    
+    if report_data:
+        report_df = pd.DataFrame(report_data)
+        print(report_df.to_string(index=False))
+        
+        # Aggregated by Model Report
+        print("\n" + "=" * 80)
+        print("AGGREGATED MODEL PERFORMANCE (Across all prompts)")
+        print("=" * 80)
+        
+        # Group metrics by model
+        model_metrics = {}
+        for (model, prompt_id), stats in metrics.items():
+            if model not in model_metrics:
+                model_metrics[model] = {'tp': 0, 'fp': 0, 'fn': 0, 'exact': 0, 'total': 0, 'sum_f1': 0.0, 'times': []}
+            
+            m_stats = model_metrics[model]
+            m_stats['tp'] += stats['tp']
+            m_stats['fp'] += stats['fp']
+            m_stats['fn'] += stats['fn']
+            m_stats['exact'] += stats['exact']
+            m_stats['total'] += stats['total']
+            m_stats['sum_f1'] += stats['sum_f1']
+            m_stats['times'].extend(stats['times'])
+            
+        model_report_data = []
+        for model, stats in model_metrics.items():
+            total = stats['total']
+            if total == 0:
+                continue
                 
-                if key in processed:
-                    continue
-                
-                output = call_llm(config, model, p['template'], title)
-                
-                result_entry = {
-                    "title": title,
-                    "model": model,
-                    "prompt_id": prompt_id,
-                    "output": output,
-                    "phase": "extraction",
-                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "rating": ""
-                }
-                
-                # Append result immediately
-                with open(output_jsonl, 'a', encoding='utf-8') as fout:
-                    fout.write(json.dumps(result_entry) + "\n")
-                
-                if not output.startswith("ERROR"):
-                    processed.add(key)
-                    results_count += 1
+            tp = stats['tp']
+            fp = stats['fp']
+            fn = stats['fn']
+            
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+            
+            macro_f1 = stats['sum_f1'] / total if total > 0 else 0
+            accuracy = stats['exact'] / total
+            avg_time = sum(stats['times']) / len(stats['times']) if stats['times'] else 0
+            
+            model_report_data.append({
+                "Model": model,
+                "Accuracy": f"{accuracy:.1%}",
+                "F1 (Micro)": f"{f1:.3f}",
+                "F1 (Macro)": f"{macro_f1:.3f}",
+                "Avg Time (s)": f"{avg_time:.2f}"
+            })
+            
+        if model_report_data:
+            model_df = pd.DataFrame(model_report_data)
+            print(model_df.to_string(index=False))
+            
+    else:
+        print("No results to report.")
+
+    if not args.skip_extraction:
+        # Process extraction set
+        print("\n" + "=" * 80)
+        print("PHASE 2: EXTRACTION (Processing NO_NAME titles)")
+        print("=" * 80)
+        
+        # Apply limit to extraction too
+        if len(extraction_df) > args.limit:
+            extraction_df = extraction_df.head(args.limit)
+            
+        for idx, row in extraction_df.iterrows():
+            title = row['title']
+            print(f"\nTitle: {title[:70]}...")
+            
+            for model in models:
+                for p in prompts:
+                    prompt_id = p['id']
+                    
+                    output = call_llm(config, model, p['template'], title)
+                    
+                    # Add delay between calls to respect rate limits
+                    time.sleep(3)
+                    
+                    result_entry = {
+                        "title": title,
+                        "model": model,
+                        "prompt_id": prompt_id,
+                        "output": output,
+                        "phase": "extraction",
+                        "timestamp": datetime.now().isoformat(),
+                        "rating": ""
+                    }
+                    
+                    with open(output_jsonl, 'a', encoding='utf-8') as fout:
+                        fout.write(json.dumps(result_entry) + "\n")
+                    
                     print(f"  [{model}|{prompt_id}] -> {output}")
 
     print(f"\n{'=' * 80}")
-    print(f"Test session complete. Total new successful entries: {results_count}")
+    print(f"Test session complete. Total successful entries: {results_count}")
     print(f"Results stored in {output_jsonl}")
     print(f"{'=' * 80}")
 
