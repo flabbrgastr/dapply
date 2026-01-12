@@ -104,13 +104,14 @@ def _extract_sxyprn(soup, html_file_path):
         if title:
             results.append(
                 {
-                    "source_file": str(html_file_path),
+                    "item_url": item_url,
                     "title": title,
                     "performers": "; ".join(performers) if performers else "",
                     "item_date": item_date,
                     "hits": hits,
                     "last_updated": datetime.today().strftime("%Y-%m-%d"),
-                    "item_url": item_url,
+                    "crawls": "1",
+                    "source_file": str(html_file_path),
                 }
             )
     return results
@@ -120,7 +121,7 @@ def _extract_analvids(soup, html_file_path):
     """Specific extraction for analvids.com"""
     results = []
 
-    # Find all card containers
+    # Try scenes first (standard videos)
     cards = soup.find_all("div", class_=lambda x: x and "card-scene" in x)
 
     for card in cards:
@@ -148,13 +149,47 @@ def _extract_analvids(soup, html_file_path):
         if title:
             results.append(
                 {
-                    "source_file": str(html_file_path),
+                    "item_url": item_url,
                     "title": title,
                     "performers": "; ".join(performers) if performers else "NO_NAME",
                     "item_date": item_date,
                     "hits": hits,
                     "last_updated": datetime.today().strftime("%Y-%m-%d"),
+                    "crawls": "1",
+                    "source_file": str(html_file_path),
+                }
+            )
+
+    # Try models (performer listings) if no scenes found or in addition
+    model_cards = soup.find_all("div", class_="model-top")
+    for card in model_cards:
+        name_div = card.find("div", class_="model-top__name")
+        if not name_div:
+            continue
+
+        title = name_div.get("title") or name_div.get_text(strip=True)
+
+        a_tag = card.find("a", class_="model-top__img")
+        item_url = a_tag.get("href", "") if a_tag else ""
+
+        scene_count_tag = card.find("div", class_="model-top__scene")
+        # Store scene count in 'hits' field for models
+        hits = scene_count_tag.get_text(strip=True) if scene_count_tag else ""
+
+        # For models, the 'performers' is just the name
+        performers = [title]
+
+        if title:
+            results.append(
+                {
                     "item_url": item_url,
+                    "title": f"Model: {title}",
+                    "performers": title,
+                    "item_date": "",
+                    "hits": hits,
+                    "last_updated": datetime.today().strftime("%Y-%m-%d"),
+                    "crawls": "1",
+                    "source_file": str(html_file_path),
                 }
             )
 
@@ -186,13 +221,14 @@ def process_html_files(html_dir, output_csv):
         return 0
 
     fieldnames = [
-        "source_file",
+        "item_url",
         "title",
         "performers",
         "item_date",
         "hits",
         "last_updated",
-        "item_url",
+        "crawls",
+        "source_file",
     ]
     file_exists = Path(output_csv).exists()
     mode = "a" if file_exists else "w"

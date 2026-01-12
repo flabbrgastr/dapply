@@ -6,8 +6,9 @@ and status tracking components.
 """
 
 import logging
+import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from scraper import ScraperModule
 from url_generator import URLGenerator
@@ -247,6 +248,70 @@ class Orchestator:
 
         self.logger.info("Scraping workflow completed")
 
+    def _filter_novel_items(self, items: List[Dict], session_known_urls: Set[str]) -> Tuple[List[Dict], List[Dict]]:
+        """
+        Filter out items that are already known, checking ad-hoc against extracted.csv.
+        
+        Args:
+            items: List of items extracted from a page
+            session_known_urls: Set of URLs found in the current scraping session
+            
+        Returns:
+            Tuple of (novel_items, all_items)
+        """
+        if not items:
+            return [], []
+
+        # 1. First check against the current session's known URLs
+        potentially_new = [
+            item for item in items if item["item_url"] not in session_known_urls
+        ]
+        
+        if not potentially_new:
+            return [], items
+
+        # 2. Check ad-hoc against extracted.csv using pandas chunks
+        if os.path.exists("extracted.csv"):
+            try:
+                import pandas as pd
+                
+                # Get the list of URLs we are looking for
+                urls_to_check = {item["item_url"] for item in potentially_new}
+                known_in_csv = set()
+                
+                # Read in chunks to be memory efficient
+                chunk_size = 50000
+                for chunk in pd.read_csv(
+                    "extracted.csv",
+                    usecols=["item_url"],
+                    dtype={"item_url": "str"},
+                    chunksize=chunk_size,
+                ):
+                    # Check which of our urls_to_check are in this chunk
+                    found = set(chunk[chunk["item_url"].isin(urls_to_check)]["item_url"])
+                    known_in_csv.update(found)
+                    
+                    # Remove found URLs from our check set to speed up next chunks
+                    urls_to_check -= found
+                    
+                    # If we've found all of them, we can stop reading the file
+                    if not urls_to_check:
+                        break
+                
+                # Filter out those found in CSV
+                novel_items = [
+                    item for item in potentially_new if item["item_url"] not in known_in_csv
+                ]
+                return novel_items, items
+                
+            except Exception as e:
+                self.logger.warning(f"Ad-hoc novelty check failed: {e}")
+                # Fallback: assume all potentially_new are novel if check fails
+                return potentially_new, items
+        
+        # If file doesn't exist, all potentially_new are novel
+        return potentially_new, items
+
     def _handoff_to_scraper(
         self,
         urls: List[str],
@@ -278,28 +343,8 @@ class Orchestator:
         # Map URLs to their configuration names
         url_config_names = self._get_url_config_names(urls)
 
-        # Load known URLs if auto-stop is enabled - memory efficient with pandas
-        known_urls = set()
-        if stop_on_no_new:
-            try:
-                import os
-
-                import pandas as pd
-
-                if os.path.exists("extracted.csv"):
-                    # Read only the item_url column to minimize memory usage
-                    df = pd.read_csv(
-                        "extracted.csv", usecols=["item_url"], dtype={"item_url": "str"}
-                    )
-                    # Create set from non-null values for fast lookup
-                    known_urls = set(df["item_url"].dropna().values)
-                self.logger.info(
-                    f"Loaded {len(known_urls)} known URLs for novelty check"
-                )
-            except Exception as e:
-                self.logger.warning(
-                    f"Could not load extracted.csv for novelty check: {e}"
-                )
+        # Track URLs found in the current session to prevent internal duplicates
+        session_known_urls = set()
 
         # Process URLs
         if not stop_on_no_new:
@@ -330,9 +375,9 @@ class Orchestator:
                 if response.result == ScrapeResult.SUCCESS and response.filename:
                     self.logger.info(f"Indexing {url}...")
                     items = extract_from_file(response.filename)
-                    new_items = [
-                        item for item in items if item["item_url"] not in known_urls
-                    ]
+                    
+                    # Ad-hoc novelty check
+                    new_items, all_items = self._filter_novel_items(items, session_known_urls)
                     novelty_count = len(new_items)
                     self.logger.info(f"  -> {novelty_count} new items found")
 
@@ -341,7 +386,7 @@ class Orchestator:
 
                     # Check if current page has no new content or no items extracted at all
                     if novelty_count == 0:
-                        if items:  # Page had items but none were new
+                        if all_items:  # Page had items but none were new
                             self.logger.info(
                                 f"--- NOVELTY ALERT: No new content found. Stopping early. ---"
                             )
@@ -356,10 +401,10 @@ class Orchestator:
                                 urls[i + 1], tag="AUTOEXIT"
                             )
                         break
-                    elif items:
-                        # Update known_urls for the next page in same session
+                    elif all_items:
+                        # Update session_known_urls for the next page in same session
                         for item in new_items:
-                            known_urls.add(item["item_url"])
+                            session_known_urls.add(item["item_url"])
                 else:
                     self._process_scrape_response(response)
 
@@ -415,22 +460,9 @@ class Orchestator:
         if response.result == ScrapeResult.SUCCESS and response.filename:
             self.logger.info(f"Indexing {url}...")
             items = extract_from_file(response.filename)
-            # Load known URLs for novelty check
-            import pandas as pd
-
-            known_urls = set()
-            if os.path.exists("extracted.csv"):
-                try:
-                    df = pd.read_csv(
-                        "extracted.csv", usecols=["item_url"], dtype={"item_url": "str"}
-                    )
-                    known_urls = set(df["item_url"].dropna().values)
-                except Exception as e:
-                    self.logger.warning(
-                        f"Could not load extracted.csv for novelty check: {e}"
-                    )
-
-            new_items = [item for item in items if item["item_url"] not in known_urls]
+            
+            # Ad-hoc novelty check
+            new_items, all_items = self._filter_novel_items(items, set())
             novelty_count = len(new_items)
             self.logger.info(
                 f"  -> {novelty_count} new items found out of {len(items)} total items"
@@ -438,10 +470,6 @@ class Orchestator:
 
             # Update status with novelty count
             self._process_scrape_response(response, tag=f"X{novelty_count}")
-
-            # Update known_urls for the next processing
-            for item in new_items:
-                known_urls.add(item["item_url"])
 
             return novelty_count, len(items), new_items
         else:

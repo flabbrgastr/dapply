@@ -24,6 +24,9 @@ uv run pytest test/integration/
 # Run with coverage or verbose
 uv run pytest --cov=.
 uv run pytest -v
+
+# Run the web viewer
+uv run python db_viewer.py
 ```
 
 ## Code Style Guidelines
