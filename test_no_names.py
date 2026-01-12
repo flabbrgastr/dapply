@@ -88,8 +88,9 @@ def call_llm(config, model, prompt_template, title):
         "temperature": 0
     }
     
-    # Exponential backoff requested: 3, 6, 12, 24, 48
-    backoff_sequence = [3, 6, 12, 24, 48]
+    # Exponential backoff: Initial 1s, double it, 6 times max
+    # Sequence: 1, 2, 4, 8, 16, 32
+    backoff_sequence = [1, 2, 4, 8, 16, 32]
     
     api_base = config.get('OPENAI_API_BASE', "https://amd1.mooo.com:8123/v1")
     
@@ -178,9 +179,28 @@ def main():
     print(f"Loaded {len(extraction_df)} extraction titles (NO_NAME)")
     print()
 
+    # Generate Report File Path early
+    report_filename = f"test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    results_dir = os.path.join(base_dir, 'test', 'results')
+    os.makedirs(results_dir, exist_ok=True)
+    report_path = os.path.join(results_dir, report_filename)
+    print(f"Report file: {report_path}")
+    
+    # Initialize Report File
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write("# LLM Performer Extraction Test Report\n")
+        f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Models: {', '.join(models)}\n\n")
+        f.write("## 1. Test Execution Log\n\n")
+        f.flush()
+
     # Metrics storage
-    # {(model, prompt_id): {'tp': 0, 'fp': 0, 'fn': 0, 'exact': 0, 'total': 0, 'time': []}}
+    # {(model, prompt_id): {'tp': 0, 'fp': 0, 'fn': 0, 'exact': 0, 'total': 0, 'sum_f1': 0.0, 'times': []}}
     metrics = {}
+    
+    # Detailed results for report
+    # List of dicts: {title, model, prompt, expected, actual, is_pass, f1}
+    detailed_results = []
 
     processed = set()
     # Load existing to skip? Maybe better to overwrite for evaluation runs to ensure consistent N
@@ -236,6 +256,28 @@ def main():
                 metrics[metric_key]['total'] += 1
                 metrics[metric_key]['sum_f1'] += f1
                 metrics[metric_key]['times'].append(duration)
+                
+                # Store detailed result
+                detailed_results.append({
+                    "title": title,
+                    "model": model,
+                    "prompt": prompt_id,
+                    "expected": expected,
+                    "actual": output,
+                    "is_pass": is_exact,
+                    "f1": f1
+                })
+
+                # STREAM TO REPORT FILE
+                with open(report_path, 'a', encoding='utf-8') as f:
+                    status_icon = "✅ PASS" if is_exact else "❌ FAIL"
+                    f.write(f"### {status_icon} | {model} | {prompt_id}\n")
+                    f.write(f"- **Title**: {title}\n")
+                    f.write(f"- **Expected**: `{expected}`\n")
+                    f.write(f"- **Actual**: `{output}`\n")
+                    f.write(f"- **F1**: {f1:.2f}\n")
+                    f.write("\n---\n\n")
+                    f.flush()
 
                 result_entry = {
                     "title": title,
@@ -298,14 +340,25 @@ def main():
             "Avg Time (s)": f"{avg_time:.2f}"
         })
     
-    if report_data:
-        report_df = pd.DataFrame(report_data)
-        print(report_df.to_string(index=False))
+    # Append Aggregates to Report File
+    with open(report_path, 'a', encoding='utf-8') as f:
+        f.write("## 2. Performance by Model & Prompt\n\n")
+        
+        if report_data:
+            report_df = pd.DataFrame(report_data)
+            print(report_df.to_string(index=False))
+            f.write(report_df.to_markdown(index=False))
+        else:
+            print("No results to report.")
+            f.write("No data available.")
+        f.write("\n\n")
         
         # Aggregated by Model Report
         print("\n" + "=" * 80)
         print("AGGREGATED MODEL PERFORMANCE (Across all prompts)")
         print("=" * 80)
+        
+        f.write("## 3. Aggregated Performance by Model\n\n")
         
         # Group metrics by model
         model_metrics = {}
@@ -351,9 +404,12 @@ def main():
         if model_report_data:
             model_df = pd.DataFrame(model_report_data)
             print(model_df.to_string(index=False))
+            f.write(model_df.to_markdown(index=False))
+        else:
+            print("No results to report.")
+            f.write("No data available.")
             
-    else:
-        print("No results to report.")
+    print(f"\nReport generated: {report_filename}")
 
     if not args.skip_extraction:
         # Process extraction set

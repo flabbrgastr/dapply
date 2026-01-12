@@ -13,3 +13,4 @@ url_status_tracking.txt
 *.csv
 prompt.config
 urls.yaml
+test_report*
