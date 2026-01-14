@@ -8,10 +8,12 @@ and status tracking components.
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from scraper import ScraperModule
 from url_generator import URLGenerator
+from dbadd import add_performers_from_items
 
 
 class Orchestator:
@@ -104,6 +106,14 @@ class Orchestator:
             all_todo_urls = [
                 url for url in all_todo_urls if url_config_names.get(url) == site_filter
             ]
+
+            if site_filter == "anvids_dapmodels" and not all_todo_urls:
+                all_urls = self.url_generator.generate_all_urls()
+                all_todo_urls = [
+                    url
+                    for url in all_urls
+                    if "models/niche/double_anal/page" in url
+                ]
 
         if limit_per_type is None:
             return all_todo_urls
@@ -242,6 +252,7 @@ class Orchestator:
             urls_to_process,
             max_concurrent,
             delay_between_requests,
+            limit_per_url_type=limit_per_url_type,
             random_delay_range=random_delay_range,
             stop_on_no_new=stop_on_no_new,
         )
@@ -312,11 +323,48 @@ class Orchestator:
         # If file doesn't exist, all potentially_new are novel
         return potentially_new, items
 
+    def _append_items_to_csv(self, items: List[Dict], csv_path: str = "extracted.csv") -> None:
+        """
+        Append new items to the extracted CSV file.
+
+        Args:
+            items: List of item dictionaries to persist
+            csv_path: Path to the extracted CSV file
+        """
+        if not items:
+            return
+
+        import csv
+
+        fieldnames = [
+            "item_url",
+            "title",
+            "performers",
+            "item_date",
+            "hits",
+            "last_updated",
+            "crawls",
+            "source_file",
+        ]
+
+        csv_file = Path(csv_path)
+        file_exists = csv_file.exists()
+
+        with csv_file.open("a" if file_exists else "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+
+            for item in items:
+                row = {key: item.get(key, "") for key in fieldnames}
+                writer.writerow(row)
+
     def _handoff_to_scraper(
         self,
         urls: List[str],
         max_concurrent: int,
         delay: float,
+        limit_per_url_type: Optional[int] = None,
         random_delay_range: Optional[tuple] = None,
         stop_on_no_new: bool = False,
     ):
@@ -343,57 +391,131 @@ class Orchestator:
         # Map URLs to their configuration names
         url_config_names = self._get_url_config_names(urls)
 
-        # Track URLs found in the current session to prevent internal duplicates
-        session_known_urls = set()
-
         # Process URLs
         from extractor import extract_from_file
         from scraper import ScrapeResult
 
-        for i, url in enumerate(urls):
-            self.logger.info(f"Crawling {url}...")
-            response = scraper.scrape_batch(
-                [url],
-                max_concurrent=1,
-                url_config_names={url: url_config_names.get(url, "default")},
-                random_delay=None if i == 0 else random_delay_range,
-            )[0]
+        # Group URLs by site/config name for round-robin processing
+        urls_by_site: Dict[str, List[str]] = {}
+        for url in urls:
+            site = url_config_names.get(url, "default")
+            if site not in urls_by_site:
+                urls_by_site[site] = []
+            urls_by_site[site].append(url)
 
-            if response.result == ScrapeResult.SUCCESS and response.filename:
-                self.logger.info(f"Indexing {url}...")
-                items = extract_from_file(response.filename)
-                
-                # Ad-hoc novelty check (always done to show count)
-                new_items, all_items = self._filter_novel_items(items, session_known_urls)
-                novelty_count = len(new_items)
-                self.logger.info(f"  -> {novelty_count} new items found")
+        # Track URLs found per site in the current session
+        session_known_by_site: Dict[str, Set[str]] = {
+            site: set() for site in urls_by_site
+        }
 
-                # Mark as done with X<count> tag
-                self._process_scrape_response(response, tag=f"X{novelty_count}")
+        # Per-site indices and active site list for round-robin
+        site_indices: Dict[str, int] = {site: 0 for site in urls_by_site}
+        active_sites: List[str] = [
+            site for site, site_urls in urls_by_site.items() if site_urls
+        ]
 
-                # Check if we should stop early (only if stop_on_no_new is True)
-                if stop_on_no_new and novelty_count == 0:
-                    if all_items:  # Page had items but none were new
-                        self.logger.info(
-                            f"--- NOVELTY ALERT: No new content found. Stopping early. ---"
-                        )
-                    else:  # Page had no items extracted at all (might be empty/invalid page)
-                        self.logger.info(
-                            f"--- EMPTY PAGE ALERT: No items found on page. Stopping early. ---"
-                        )
+        # Global step counter to control when to apply random delay
+        step = 0
 
-                    # Mark only the VERY NEXT URL as AUTOEXIT to show where we stopped
-                    if i + 1 < len(urls):
-                        self.url_generator.mark_url_done(
-                            urls[i + 1], tag="AUTOEXIT"
-                        )
-                    break
-                elif all_items:
-                    # Update session_known_urls for the next page in same session
-                    for item in new_items:
-                        session_known_urls.add(item["item_url"])
-            else:
-                self._process_scrape_response(response)
+        while active_sites:
+            for site in list(active_sites):
+                site_urls = urls_by_site[site]
+                index = site_indices[site]
+
+                if index >= len(site_urls):
+                    active_sites.remove(site)
+                    continue
+
+                url = site_urls[index]
+                site_indices[site] = index + 1
+
+                self.logger.info(f"Crawling {url}...")
+                response = scraper.scrape_batch(
+                    [url],
+                    max_concurrent=1,
+                    url_config_names={url: site},
+                    random_delay=None if step == 0 else random_delay_range,
+                )[0]
+
+                step += 1
+
+                if response.result == ScrapeResult.SUCCESS and response.filename:
+                    self.logger.info(f"Indexing {url}...")
+                    items = extract_from_file(response.filename)
+
+                    new_items, all_items = self._filter_novel_items(
+                        items, session_known_by_site[site]
+                    )
+                    novelty_count = len(new_items)
+                    self.logger.info(f"  -> {novelty_count} new items found")
+
+                    if new_items:
+                        self._append_items_to_csv(new_items)
+                        # Also add to the database immediately
+                        try:
+                            add_performers_from_items(new_items)
+                        except Exception as e:
+                            self.logger.error(f"Failed to add performers to DB: {e}")
+
+                    if site == "anvids_dapmodels" and new_items:
+                        performer_names = []
+                        for item in new_items:
+                            performers_str = item.get("performers") or ""
+                            if performers_str and performers_str != "NO_NAME":
+                                for name in performers_str.split(";"):
+                                    name = name.strip()
+                                    if name:
+                                        performer_names.append(name)
+                            elif item.get("title", "").startswith("Model: "):
+                                name = item["title"].replace("Model:", "").strip()
+                                if name:
+                                    performer_names.append(name)
+
+                        unique_names = sorted({name for name in performer_names})
+                        if unique_names:
+                            max_to_show = 10
+                            shown = unique_names[:max_to_show]
+                            self.logger.info(
+                                "    New performers: " + ", ".join(shown)
+                            )
+                            remaining = len(unique_names) - len(shown)
+                            if remaining > 0:
+                                self.logger.info(
+                                    f"    (+{remaining} more performers)"
+                                )
+
+                    # Mark as done with X<count> tag
+                    self._process_scrape_response(response, tag=f"X{novelty_count}")
+
+                    if (
+                        stop_on_no_new
+                        and (limit_per_url_type is None or len(urls_by_site) == 1)
+                        and novelty_count == 0
+                    ):
+                        if all_items:
+                            self.logger.info(
+                                f"--- NOVELTY ALERT: No new content found for site '{site}'. Stopping this site early. ---"
+                            )
+                        else:
+                            self.logger.info(
+                                f"--- EMPTY PAGE ALERT: No items found on page for site '{site}'. Stopping this site early. ---"
+                            )
+
+                        # Mark only the very next URL for this site as AUTOEXIT to show where we stopped
+                        next_index = site_indices[site]
+                        if next_index < len(site_urls):
+                            self.url_generator.mark_url_done(
+                                site_urls[next_index], tag="AUTOEXIT"
+                            )
+
+                        # Remove this site from further round-robin processing
+                        active_sites.remove(site)
+                    elif all_items:
+                        # Update session_known_urls for this site for the next pages of the same site
+                        for item in new_items:
+                            session_known_by_site[site].add(item["item_url"])
+                else:
+                    self._process_scrape_response(response)
 
     def _process_scrape_response(self, response, tag="X"):
         """Process a single scrape response and update status."""
