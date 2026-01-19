@@ -41,7 +41,7 @@ def create_db(db_path):
     # Migration: Add aka and rating if they are missing from an old database
     cursor.execute("PRAGMA table_info(performers)")
     columns = [column[1] for column in cursor.fetchall()]
-    
+
     if 'aka' not in columns:
         cursor.execute("ALTER TABLE performers ADD COLUMN aka TEXT")
     if 'rating' not in columns:
@@ -64,6 +64,9 @@ def add_performers_from_items(items, db_path="performers.db"):
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+
+    new_performers_added = []
+    updated_performers = []
 
     for row in items:
         item_url = row.get('item_url', '').strip()
@@ -100,11 +103,12 @@ def add_performers_from_items(items, db_path="performers.db"):
 
                 # Check if this is a new URL
                 is_new_url = item_url not in existing_urls
-                
+
                 if is_new_url:
                     existing_urls.add(item_url)
                     # Only increment crawls if we actually found a new video for this performer
                     new_crawl_count = current_crawls + 1
+                    updated_performers.append((performer, item_url))
                 else:
                     new_crawl_count = current_crawls
 
@@ -127,9 +131,29 @@ def add_performers_from_items(items, db_path="performers.db"):
                     VALUES (?, ?, CURRENT_TIMESTAMP, 1, '', '')
                 """, (performer, item_url))
 
+                new_performers_added.append((performer, item_url))
+
     # Commit changes and close connection
     conn.commit()
     conn.close()
+
+    # Print summary information
+    if new_performers_added:
+        print(f"Added {len(new_performers_added)} new performers to the database:")
+        for name, url in new_performers_added[:20]:  # Show first 20 new performers
+            print(f"  - {name} ({url})")
+        if len(new_performers_added) > 20:
+            print(f"  ... and {len(new_performers_added) - 20} more")
+
+    if updated_performers:
+        print(f"Updated {len(updated_performers)} existing performers with new content:")
+        for name, url in updated_performers[:20]:  # Show first 20 updated performers
+            print(f"  - {name} ({url})")
+        if len(updated_performers) > 20:
+            print(f"  ... and {len(updated_performers) - 20} more")
+
+    if not new_performers_added and not updated_performers:
+        print("No new performers or updates found.")
 
 
 def add_performers_from_csv(csv_file_path, db_path="performers.db"):
@@ -145,7 +169,7 @@ def add_performers_from_csv(csv_file_path, db_path="performers.db"):
     with open(csv_file_path, 'r', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         items = list(reader)
-    
+
     add_performers_from_items(items, db_path)
     print(f"Added performer data from {csv_file_path} to {db_path}")
 
