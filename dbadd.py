@@ -38,6 +38,21 @@ def create_db(db_path):
         )
     ''')
 
+    # Create items table to store individual items with performer association and add date
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            performer_id INTEGER,
+            item_url TEXT NOT NULL,
+            title TEXT,
+            item_date TEXT,  -- Date from the source if available
+            hits INTEGER,
+            source_file TEXT,
+            added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (performer_id) REFERENCES performers (id)
+        )
+    ''')
+
     # Migration: Add aka and rating if they are missing from an old database
     cursor.execute("PRAGMA table_info(performers)")
     columns = [column[1] for column in cursor.fetchall()]
@@ -71,6 +86,10 @@ def add_performers_from_items(items, db_path="performers.db"):
     for row in items:
         item_url = row.get('item_url', '').strip()
         performers_str = row.get('performers', '').strip()
+        title = row.get('title', '').strip()
+        item_date = row.get('item_date', '').strip()
+        hits = row.get('hits', '').strip()
+        source_file = row.get('source_file', '').strip()
 
         if not item_url:
             continue
@@ -87,12 +106,12 @@ def add_performers_from_items(items, db_path="performers.db"):
 
         for performer in performers:
             # Check if performer already exists in database
-            cursor.execute("SELECT urls, crawls FROM performers WHERE name = ?", (performer,))
+            cursor.execute("SELECT id, urls, crawls FROM performers WHERE name = ?", (performer,))
             result = cursor.fetchone()
 
             if result:
                 # Performer exists, update their record
-                existing_urls_str, current_crawls = result
+                performer_id, existing_urls_str, current_crawls = result
 
                 # Use a set to maintain uniqueness of URLs
                 if existing_urls_str:
@@ -131,7 +150,23 @@ def add_performers_from_items(items, db_path="performers.db"):
                     VALUES (?, ?, CURRENT_TIMESTAMP, 1, '', '')
                 """, (performer, item_url))
 
+                # Get the ID of the newly inserted performer
+                performer_id = cursor.lastrowid
                 new_performers_added.append((performer, item_url))
+
+            # Insert the item into the items table
+            # Convert hits to integer if possible
+            hits_int = None
+            if hits:
+                try:
+                    hits_int = int(hits.replace(',', ''))
+                except ValueError:
+                    hits_int = None
+
+            cursor.execute("""
+                INSERT INTO items (performer_id, item_url, title, item_date, hits, source_file)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (performer_id, item_url, title, item_date, hits_int, source_file))
 
     # Commit changes and close connection
     conn.commit()

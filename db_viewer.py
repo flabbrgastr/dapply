@@ -93,6 +93,34 @@ def delete_performer(performer_id):
     return jsonify({"message": "Performer deleted successfully"})
 
 
+@app.route("/api/performers/<int:performer_id>/items")
+def get_performer_items(performer_id):
+    conn = get_db_connection()
+
+    # Get sort parameters
+    sort_by = request.args.get("sort_by", "added_date")
+    sort_order = request.args.get("sort_order", "desc")
+
+    # Validate sort parameters to prevent injection
+    valid_columns = ["id", "item_url", "title", "item_date", "hits", "added_date", "source_file"]
+    if sort_by not in valid_columns:
+        sort_by = "added_date"
+    if sort_order not in ["asc", "desc"]:
+        sort_order = "desc"
+
+    # Query items for the specific performer with sorting
+    items = conn.execute(
+        f"SELECT * FROM items WHERE performer_id = ? ORDER BY {sort_by} {sort_order}", (performer_id,)
+    ).fetchall()
+
+    conn.close()
+
+    # Convert to list of dicts for JSON serialization
+    items_list = [dict(item) for item in items]
+
+    return jsonify(items_list)
+
+
 @app.route("/stats")
 def stats_page():
     return render_template("stats.html")
@@ -527,4 +555,4 @@ def get_stats():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)
