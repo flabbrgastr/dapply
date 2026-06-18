@@ -96,10 +96,14 @@ urls:
         # Mark one as done
         orchestator.url_generator.mark_url_done(test_url)
 
-        # Should have one less URL to process
+        # get_urls_to_process now returns fresh URLs (ignores status)
         urls_to_process_after = orchestator.get_urls_to_process()
-        assert len(urls_to_process_after) == 2
-        assert test_url not in urls_to_process_after
+        assert len(urls_to_process_after) == 3
+        assert test_url in urls_to_process_after
+
+        # Verify limit works: take only 1 per site
+        limited = orchestator.get_urls_to_process(limit_per_type=1)
+        assert len(limited) == 1
 
     finally:
         os.unlink(config_path)

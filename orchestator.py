@@ -89,48 +89,32 @@ class Orchestator:
         self, limit_per_type: Optional[int] = None, site_filter: Optional[str] = None
     ) -> List[str]:
         """
-        Get the list of URLs to scrape.
-
-        When limit_per_type is set: generates fresh URLs from config, ignores status
-        (so repeated runs always scrape the requested pages).
-
-        When limit_per_type is None: uses status tracking to resume where left off.
+        Get fresh URLs to scrape, ignoring old status tracking.
 
         Args:
-            limit_per_type: Max pages per site. When set, ignores done/failed status.
-            site_filter: Only return URLs from the specified site/config name
+            limit_per_type: Max pages per site. None = all pages.
+            site_filter: Only URLs from the specified site/config name
 
         Returns:
-            List of URLs to scrape
+            List of URLs to scrape (auto-stop will cut short when novelty hits 0)
         """
-        # When limit is specified: ignore status, generate fresh URLs
-        if limit_per_type is not None:
-            all_urls = self.url_generator.generate_all_urls()
-
-            if site_filter:
-                url_config_names = self._get_url_config_names(all_urls)
-                all_urls = [
-                    url for url in all_urls
-                    if url_config_names.get(url) == site_filter
-                ]
-
-            urls_by_type = self._group_urls_by_type(all_urls)
-            result = []
-            for url_type, urls in urls_by_type.items():
-                result.extend(urls[:limit_per_type])
-            return result
-
-        # No limit: use status tracking for resume
-        all_todo_urls = self.url_generator.get_todo_urls()
+        all_urls = self.url_generator.generate_all_urls()
 
         if site_filter:
-            url_config_names = self._get_url_config_names(all_todo_urls)
-            all_todo_urls = [
-                url for url in all_todo_urls
+            url_config_names = self._get_url_config_names(all_urls)
+            all_urls = [
+                url for url in all_urls
                 if url_config_names.get(url) == site_filter
             ]
 
-        return all_todo_urls
+        urls_by_type = self._group_urls_by_type(all_urls)
+        result = []
+        for url_type, urls in urls_by_type.items():
+            if limit_per_type is not None:
+                result.extend(urls[:limit_per_type])
+            else:
+                result.extend(urls)
+        return result
 
     def download_n_of_each_type(self, n: int = 3) -> None:
         """
@@ -721,8 +705,8 @@ def main():
         help="Site to scrape (from urls.yaml). Default: all sites",
     )
     parser.add_argument(
-        "-n", "--limit", type=int, default=3,
-        help="Pages to scrape per site (default: 3)",
+        "-n", "--limit", type=int, default=None,
+        help="Max pages per site (default: unlimited, auto-stop on empty pages)",
     )
     parser.add_argument(
         "--delay", type=float, default=1.5,
@@ -751,7 +735,8 @@ def main():
         return
 
     site = args.site or "all sites"
-    print(f"Scraping {args.limit} page(s) from {site}...")
+    limit_desc = f"{args.limit} page(s)" if args.limit else "all pages (auto-stop)"
+    print(f"Scraping {limit_desc} from {site}...")
     orchestator.start_scraping_workflow(
         max_concurrent=1,
         delay_between_requests=args.delay,
