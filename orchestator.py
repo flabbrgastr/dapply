@@ -705,10 +705,6 @@ def main():
         help="Site to scrape (from urls.yaml). Default: all sites",
     )
     parser.add_argument(
-        "-n", "--limit", type=int, default=None,
-        help="Max pages per site (default: unlimited, auto-stop on empty pages)",
-    )
-    parser.add_argument(
         "--delay", type=float, default=1.5,
         help="Delay between requests in seconds (default: 1.5)",
     )
@@ -735,12 +731,11 @@ def main():
         return
 
     site = args.site or "all sites"
-    limit_desc = f"{args.limit} page(s)" if args.limit else "all pages (auto-stop)"
-    print(f"Scraping {limit_desc} from {site}...")
+    print(f"Scraping all pages from {site} (auto-stop)...")
     orchestator.start_scraping_workflow(
         max_concurrent=1,
         delay_between_requests=args.delay,
-        limit_per_url_type=args.limit,
+        limit_per_url_type=None,
         site_filter=args.site,
         stop_on_no_new=args.stop_on_old,
     )
