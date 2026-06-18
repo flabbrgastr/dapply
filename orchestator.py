@@ -58,8 +58,8 @@ class Orchestator:
         self.url_generator = URLGenerator(config_file=config_file)
         self.url_generator.status_file = status_file
 
-        # Set up logging
-        logging.basicConfig(level=logging.INFO)
+        # Set up logging (quiet — only WARNING+ shows)
+        logging.basicConfig(level=logging.WARNING)
         self.logger = logging.getLogger(__name__)
 
     def generate_urls(self) -> List[str]:
@@ -216,27 +216,16 @@ class Orchestator:
         max_concurrent = max_concurrent or self.max_concurrent
         delay_between_requests = delay_between_requests or self.delay_between_requests
 
-        self.logger.info("Starting scraping workflow...")
-
-        # Step 1: Generate URLs
         all_urls = self.generate_urls()
 
-        # Step 2: Get URLs to process (with limit per type if specified)
         urls_to_process = self.get_urls_to_process(
             limit_per_type=limit_per_url_type, site_filter=site_filter
         )
 
-        self.logger.info(
-            f"Found {len(urls_to_process)} URLs to process out of {len(all_urls)} total"
-        )
-        if limit_per_url_type is not None:
-            self.logger.info(f"Limit: maximum {limit_per_url_type} per URL type")
-
         if not urls_to_process:
-            self.logger.info("No URLs to process. Workflow completed.")
+            print("Nothing to scrape.")
             return
 
-        # Step 3: Hand off to scraper module (with optional auto-stop logic)
         self._handoff_to_scraper(
             urls_to_process,
             max_concurrent,
@@ -245,8 +234,6 @@ class Orchestator:
             random_delay_range=random_delay_range,
             stop_on_no_new=stop_on_no_new,
         )
-
-        self.logger.info("Scraping workflow completed")
 
     def _filter_novel_items(self, items: List[Dict], session_known_urls: Set[str]) -> Tuple[List[Dict], List[Dict]]:
         """
@@ -367,9 +354,9 @@ class Orchestator:
             random_delay_range: Tuple of (min, max) for random delay
             stop_on_no_new: Whether to stop if no new items are found
         """
-        self.logger.info(f"Handing off {len(urls)} URLs to scraper module...")
+        from extractor import extract_from_file
+        from scraper import ScrapeResult
 
-        # Initialize the scraper module
         scraper = ScraperModule(
             delay_between_requests=delay,
             max_retries=3,
@@ -377,40 +364,28 @@ class Orchestator:
             crawl_name=self.crawl_name,
         )
 
-        # Map URLs to their configuration names
         url_config_names = self._get_url_config_names(urls)
 
-        # Process URLs
-        from extractor import extract_from_file
-        from scraper import ScrapeResult
-
-        # Group URLs by site/config name for round-robin processing
         urls_by_site: Dict[str, List[str]] = {}
         for url in urls:
             site = url_config_names.get(url, "default")
-            if site not in urls_by_site:
-                urls_by_site[site] = []
-            urls_by_site[site].append(url)
+            urls_by_site.setdefault(site, []).append(url)
 
-        # Track URLs found per site in the current session
         session_known_by_site: Dict[str, Set[str]] = {
             site: set() for site in urls_by_site
         }
+        site_totals: Dict[str, int] = {site: 0 for site in urls_by_site}
+        site_pages: Dict[str, int] = {site: 0 for site in urls_by_site}
+        site_new_names: Dict[str, List[str]] = {site: [] for site in urls_by_site}
 
-        # Per-site indices and active site list for round-robin
         site_indices: Dict[str, int] = {site: 0 for site in urls_by_site}
-        active_sites: List[str] = [
-            site for site, site_urls in urls_by_site.items() if site_urls
-        ]
-
-        # Global step counter to control when to apply random delay
+        active_sites: List[str] = [s for s, u in urls_by_site.items() if u]
         step = 0
 
         while active_sites:
             for site in list(active_sites):
                 site_urls = urls_by_site[site]
                 index = site_indices[site]
-
                 if index >= len(site_urls):
                     active_sites.remove(site)
                     continue
@@ -418,89 +393,75 @@ class Orchestator:
                 url = site_urls[index]
                 site_indices[site] = index + 1
 
-                self.logger.info(f"Crawling {url}...")
                 response = scraper.scrape_batch(
-                    [url],
-                    max_concurrent=1,
+                    [url], max_concurrent=1,
                     url_config_names={url: site},
                     random_delay=None if step == 0 else random_delay_range,
                 )[0]
-
                 step += 1
+                site_pages[site] += 1
 
                 if response.result == ScrapeResult.SUCCESS and response.filename:
-                    self.logger.info(f"Indexing {url}...")
                     items = extract_from_file(response.filename)
-
                     new_items, all_items = self._filter_novel_items(
                         items, session_known_by_site[site]
                     )
                     novelty_count = len(new_items)
-                    self.logger.info(f"  -> {novelty_count} new items found")
+                    site_totals[site] += novelty_count
 
                     if new_items:
                         self._append_items_to_csv(new_items)
-                        # Also add to the database immediately
                         try:
                             add_performers_from_items(new_items)
                         except Exception as e:
-                            self.logger.error(f"Failed to add performers to DB: {e}")
+                            self.logger.error(f"DB error: {e}")
 
-                    if site == "anvids_dapmodels" and new_items:
-                        performer_names = []
+                        # Collect performer names for summary
                         for item in new_items:
                             performers_str = item.get("performers") or ""
                             if performers_str and performers_str != "NO_NAME":
                                 for name in performers_str.split(";"):
-                                    name = name.strip()
-                                    if name:
-                                        performer_names.append(name)
+                                    n = name.strip()
+                                    if n and n not in site_new_names[site]:
+                                        site_new_names[site].append(n)
                             elif item.get("title", "").startswith("Model: "):
-                                name = item["title"].replace("Model:", "").strip()
-                                if name:
-                                    performer_names.append(name)
+                                n = item["title"].replace("Model:", "").strip()
+                                if n and n not in site_new_names[site]:
+                                    site_new_names[site].append(n)
 
-                        unique_names = sorted({name for name in performer_names})
-                        if unique_names:
-                            max_to_show = 10
-                            shown = unique_names[:max_to_show]
-                            self.logger.info(
-                                "    New performers: " + ", ".join(shown)
-                            )
-                            remaining = len(unique_names) - len(shown)
-                            if remaining > 0:
-                                self.logger.info(
-                                    f"    (+{remaining} more performers)"
-                                )
-
-                    # Mark as done with X<count> tag
-                    self._process_scrape_response(response, tag=f"X{novelty_count}")
+                    self.url_generator.mark_url_done(url, tag=f"X{novelty_count}")
 
                     if stop_on_no_new and novelty_count == 0:
-                        if all_items:
-                            self.logger.info(
-                                f"--- NOVELTY ALERT: No new content found for site '{site}'. Stopping this site early. ---"
-                            )
-                        else:
-                            self.logger.info(
-                                f"--- EMPTY PAGE ALERT: No items found on page for site '{site}'. Stopping this site early. ---"
-                            )
-
-                        # Mark only the very next URL for this site as AUTOEXIT to show where we stopped
                         next_index = site_indices[site]
                         if next_index < len(site_urls):
                             self.url_generator.mark_url_done(
                                 site_urls[next_index], tag="AUTOEXIT"
                             )
-
-                        # Remove this site from further round-robin processing
                         active_sites.remove(site)
                     elif all_items:
-                        # Update session_known_urls for this site for the next pages of the same site
                         for item in new_items:
                             session_known_by_site[site].add(item["item_url"])
                 else:
-                    self._process_scrape_response(response)
+                    self.url_generator.mark_url_failed(url)
+
+        # Compact one-line summary
+        summaries = []
+        for site in sorted(site_totals.keys()):
+            n = site_totals[site]
+            pages = site_pages[site]
+            new_ns = site_new_names[site]
+            if n == 0:
+                summaries.append(f"{site} ✓")
+            else:
+                names = ""
+                if new_ns:
+                    shown = new_ns[:3]
+                    names = " (" + ", ".join(shown)
+                    if len(new_ns) > 3:
+                        names += "..."
+                    names += ")"
+                summaries.append(f"{site}: {n} new{names} ✓")
+        print("  " + "  ".join(summaries))
 
     def _process_scrape_response(self, response, tag="X"):
         """Process a single scrape response and update status."""
@@ -705,6 +666,10 @@ def main():
         help="Site to scrape (from urls.yaml). Default: all sites",
     )
     parser.add_argument(
+        "-n", "--limit", type=int, default=None,
+        help="Force N pages per site (default: unlimited, auto-stop on empty)",
+    )
+    parser.add_argument(
         "--delay", type=float, default=1.5,
         help="Delay between requests in seconds (default: 1.5)",
     )
@@ -731,16 +696,17 @@ def main():
         return
 
     site = args.site or "all sites"
-    print(f"Scraping all pages from {site} (auto-stop)...")
+    limit = f"{args.limit} pages" if args.limit else "all pages"
+    print(f"Scraping {limit} from {site}...")
     orchestator.start_scraping_workflow(
         max_concurrent=1,
         delay_between_requests=args.delay,
-        limit_per_url_type=None,
+        limit_per_url_type=args.limit,
         site_filter=args.site,
         stop_on_no_new=args.stop_on_old,
     )
 
-    print(f"\nDone — check https://booksi.duckdns.org:8007/performers/")
+    print(f"Done — https://booksi.duckdns.org:8007/performers/")
 
 
 if __name__ == "__main__":
