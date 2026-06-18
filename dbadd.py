@@ -224,12 +224,14 @@ def add_performers_from_csv(csv_file_path, db_path="performers.db"):
     add_performers_from_items(items, db_path)
 
 
-def dedup_performers(db_path="performers.db"):
+def dedup_performers(db_path="performers.db", force=False):
     """
     Fuzzy dedup: merge ähnliche Performer-Namen in der Datenbank.
 
     Nutzt difflib.get_close_matches (cutoff 0.85) um alternative
     Schreibweisen zu erkennen und zusammenzuführen.
+    Überspringt Paare bei denen beide Seiten viele Items haben (>5),
+    da das wahrscheinlich echte verschiedene Leute sind.
     """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -237,10 +239,17 @@ def dedup_performers(db_path="performers.db"):
     cursor.execute('SELECT id, name, urls, crawls, aka FROM performers WHERE name != "NO_NAME" ORDER BY name')
     rows = cursor.fetchall()
 
-    name_to_row = {r[1]: r for r in rows}
-    all_names = list(name_to_row.keys())
+    name_to_entry = {r[1]: r for r in rows}
+    all_names = list(name_to_entry.keys())
+
+    # Pre-count items per performer
+    item_counts = {}
+    cursor.execute('SELECT performer_id, COUNT(*) FROM items GROUP BY performer_id')
+    for pid, cnt in cursor.fetchall():
+        item_counts[pid] = cnt
 
     merged = 0
+    skipped_high = 0
     processed = set()
 
     for name in all_names:
@@ -267,13 +276,21 @@ def dedup_performers(db_path="performers.db"):
             if keep == remove:
                 continue
 
-            keep_entry = name_to_row.get(keep)
-            remove_entry = name_to_row.get(remove)
+            keep_entry = name_to_entry.get(keep)
+            remove_entry = name_to_entry.get(remove)
             if not keep_entry or not remove_entry:
                 continue
 
             keep_id = keep_entry[0]
             remove_id = remove_entry[0]
+
+            k_count = item_counts.get(keep_id, 0)
+            r_count = item_counts.get(remove_id, 0)
+
+            # Skip if both have >5 items (likely different people)
+            if not force and k_count > 5 and r_count > 5:
+                skipped_high += 1
+                continue
 
             cursor.execute('SELECT urls, crawls, aka FROM performers WHERE id = ?', (keep_id,))
             r = cursor.fetchone()
@@ -310,9 +327,14 @@ def dedup_performers(db_path="performers.db"):
                 WHERE id = ?''', ('|'.join(sorted(all_urls)), total_crawls, new_aka, keep_id))
             cursor.execute('DELETE FROM performers WHERE id = ?', (remove_id,))
 
+            # Update item count cache
+            combined_count = k_count + r_count
+            item_counts[keep_id] = combined_count
+            item_counts.pop(remove_id, None)
+
             processed.add(remove)
             merged += 1
-            print(f'  {remove:30s} → {keep}')
+            print(f'  {remove:30s} → {keep:30s}  ({r_count} items → merged)')
 
         processed.add(name)
 
@@ -321,7 +343,9 @@ def dedup_performers(db_path="performers.db"):
 
     if merged:
         print(f'\n{merged} Dubletten gemerged.')
-    else:
+    if skipped_high:
+        print(f'{skipped_high} Paare übersprungen (beide >5 Items, --force zum mergen).')
+    if not merged and not skipped_high:
         print('Keine Dubletten gefunden.')
 
 
@@ -331,8 +355,9 @@ def main():
 
     db_file_path = "performers.db"
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--dedup":
-        dedup_performers(db_file_path)
+    if "--dedup" in sys.argv:
+        force = "--force" in sys.argv
+        dedup_performers(db_file_path, force=force)
         return
 
     csv_file_path = "extracted.csv"
