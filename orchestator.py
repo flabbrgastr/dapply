@@ -492,11 +492,7 @@ class Orchestator:
                     # Mark as done with X<count> tag
                     self._process_scrape_response(response, tag=f"X{novelty_count}")
 
-                    if (
-                        stop_on_no_new
-                        and (limit_per_url_type is None or len(urls_by_site) == 1)
-                        and novelty_count == 0
-                    ):
+                    if stop_on_no_new and novelty_count == 0:
                         if all_items:
                             self.logger.info(
                                 f"--- NOVELTY ALERT: No new content found for site '{site}'. Stopping this site early. ---"
