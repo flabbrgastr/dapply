@@ -224,10 +224,118 @@ def add_performers_from_csv(csv_file_path, db_path="performers.db"):
     add_performers_from_items(items, db_path)
 
 
+def dedup_performers(db_path="performers.db"):
+    """
+    Fuzzy dedup: merge ähnliche Performer-Namen in der Datenbank.
+
+    Nutzt difflib.get_close_matches (cutoff 0.85) um alternative
+    Schreibweisen zu erkennen und zusammenzuführen.
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, name, urls, crawls, aka FROM performers WHERE name != "NO_NAME" ORDER BY name')
+    rows = cursor.fetchall()
+
+    name_to_row = {r[1]: r for r in rows}
+    all_names = list(name_to_row.keys())
+
+    merged = 0
+    processed = set()
+
+    for name in all_names:
+        if name in processed:
+            continue
+
+        matches = difflib.get_close_matches(name, all_names, n=5, cutoff=0.85)
+        matches = [m for m in matches if m != name and m not in processed]
+
+        if not matches:
+            processed.add(name)
+            continue
+
+        # Canonical name: prefer longer, proper-cased
+        candidates = [name] + matches
+        canonical = max(candidates, key=lambda x: (len(x), x[0].isupper()))
+
+        for match in matches:
+            if match in processed:
+                continue
+
+            keep = canonical
+            remove = match
+            if keep == remove:
+                continue
+
+            keep_entry = name_to_row.get(keep)
+            remove_entry = name_to_row.get(remove)
+            if not keep_entry or not remove_entry:
+                continue
+
+            keep_id = keep_entry[0]
+            remove_id = remove_entry[0]
+
+            cursor.execute('SELECT urls, crawls, aka FROM performers WHERE id = ?', (keep_id,))
+            r = cursor.fetchone()
+            if not r:
+                continue
+            k_urls, k_crawls, k_aka = r
+
+            cursor.execute('SELECT urls, crawls, aka FROM performers WHERE id = ?', (remove_id,))
+            r = cursor.fetchone()
+            if not r:
+                continue
+            r_urls, r_crawls, r_aka = r
+
+            all_urls = set()
+            if k_urls:
+                all_urls.update(k_urls.split('|'))
+            if r_urls:
+                all_urls.update(r_urls.split('|'))
+
+            total_crawls = (k_crawls or 0) + (r_crawls or 0)
+
+            akas = set()
+            for a in [k_aka, r_aka]:
+                if a:
+                    for part in a.split('|'):
+                        akas.add(part.strip())
+            akas.add(remove)
+            akas.discard(keep)
+            new_aka = ' | '.join(sorted(akas))
+
+            cursor.execute('UPDATE items SET performer_id = ? WHERE performer_id = ?', (keep_id, remove_id))
+            cursor.execute('''UPDATE performers
+                SET urls = ?, crawls = ?, aka = ?, last_updated = CURRENT_TIMESTAMP
+                WHERE id = ?''', ('|'.join(sorted(all_urls)), total_crawls, new_aka, keep_id))
+            cursor.execute('DELETE FROM performers WHERE id = ?', (remove_id,))
+
+            processed.add(remove)
+            merged += 1
+            print(f'  {remove:30s} → {keep}')
+
+        processed.add(name)
+
+    conn.commit()
+    conn.close()
+
+    if merged:
+        print(f'\n{merged} Dubletten gemerged.')
+    else:
+        print('Keine Dubletten gefunden.')
+
+
 def main():
     """Main function to run the database add module"""
-    csv_file_path = "extracted.csv"
+    import sys
+
     db_file_path = "performers.db"
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--dedup":
+        dedup_performers(db_file_path)
+        return
+
+    csv_file_path = "extracted.csv"
 
     # Check if CSV file exists
     if not Path(csv_file_path).exists():
@@ -235,7 +343,6 @@ def main():
         return
 
     add_performers_from_csv(csv_file_path, db_file_path)
-    print("Database update completed!")
 
 
 if __name__ == "__main__":
