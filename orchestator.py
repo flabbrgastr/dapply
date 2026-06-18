@@ -383,24 +383,24 @@ class Orchestator:
         step = 0
         import sys
 
-        # Build a helper to render per-site dots on one line
+        # Build a helper to render per-site page count on one line
         def _show_progress(force_newline=False):
             parts = []
             for s in sorted(urls_by_site.keys()):
-                done = s not in active_sites  # site finished
-                dots = site_pages.get(s, 0)
+                done = s not in active_sites
+                n = site_pages.get(s, 0)
                 if done:
-                    parts.append(f"{s} {'▰' * max(dots,1)}✓")
-                elif dots:
-                    parts.append(f"{s} {'▰' * dots}")
+                    parts.append(f"{s} {n}✓")
+                elif n:
+                    parts.append(f"{s} {n}")
                 else:
                     parts.append(f"{s}")
             line = "  " + "  ".join(parts)
-            if force_newline:
-                print(line)
-            else:
+            if not force_newline:
                 sys.stdout.write(line + "\r")
                 sys.stdout.flush()
+            else:
+                sys.stdout.write(line + "\n")
 
         _show_progress()
 

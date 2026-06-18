@@ -9,6 +9,7 @@ This module adds performer data to a SQLite database with:
 """
 
 import csv
+import difflib
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -80,8 +81,26 @@ def add_performers_from_items(items, db_path="performers.db"):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
+    # Load all existing performers for fuzzy matching
+    cursor.execute("SELECT id, name, urls, crawls, aka FROM performers")
+    all_rows = cursor.fetchall()
+    perf_by_name: dict = {row[1]: {"id": row[0], "urls": row[2], "crawls": row[3], "aka": row[4] or ""} for row in all_rows}
+    perf_names: list = list(perf_by_name.keys())
+
     new_performers_added = []
     updated_performers = []
+    fuzzy_merged: list = []  # Track fuzzy merges for aka updates
+
+    def _find_performer(name: str):
+        """Find performer by exact or fuzzy name match."""
+        if name in perf_by_name:
+            return name, perf_by_name[name]
+        # Fuzzy match
+        matches = difflib.get_close_matches(name, perf_names, n=1, cutoff=0.85)
+        if matches:
+            matched = matches[0]
+            return matched, perf_by_name[matched]
+        return None, None
 
     for row in items:
         item_url = row.get('item_url', '').strip()
@@ -98,20 +117,28 @@ def add_performers_from_items(items, db_path="performers.db"):
         if not performers_str:
             performers = ["NO_NAME"]
         else:
-            # Split performers if multiple exist
             performers = [p.strip() for p in performers_str.split(';') if p.strip()]
-            # If splitting results in an empty list somehow
             if not performers:
                 performers = ["NO_NAME"]
 
         for performer in performers:
-            # Check if performer already exists in database
-            cursor.execute("SELECT id, urls, crawls FROM performers WHERE name = ?", (performer,))
-            result = cursor.fetchone()
+            # Find existing performer (exact or fuzzy match)
+            matched_name, result = _find_performer(performer)
 
             if result:
                 # Performer exists, update their record
-                performer_id, existing_urls_str, current_crawls = result
+                performer_id = result["id"]
+                existing_urls_str = result["urls"]
+                current_crawls = result["crawls"]
+
+                # If fuzzy match, update AKA to track alternative spelling
+                if matched_name != performer:
+                    current_aka = result["aka"]
+                    if performer.lower() not in current_aka.lower():
+                        new_aka = (current_aka + " | " + performer).strip(" | ")
+                        cursor.execute("UPDATE performers SET aka = ? WHERE id = ?", (new_aka, performer_id))
+                        perf_by_name[matched_name]["aka"] = new_aka
+                        fuzzy_merged.append((performer, matched_name))
 
                 # Use a set to maintain uniqueness of URLs
                 if existing_urls_str:
@@ -139,20 +166,22 @@ def add_performers_from_items(items, db_path="performers.db"):
                     SET urls = ?,
                         last_updated = CURRENT_TIMESTAMP,
                         crawls = ?
-                    WHERE name = ?
-                """, (updated_urls_str, new_crawl_count, performer))
+                    WHERE id = ?
+                """, (updated_urls_str, new_crawl_count, performer_id))
 
             else:
-                # Performer doesn't exist, insert new record with initial crawl count of 1
-                # aka and rating are initialized as empty
+                # New performer
                 cursor.execute("""
                     INSERT INTO performers (name, urls, last_updated, crawls, aka, rating)
                     VALUES (?, ?, CURRENT_TIMESTAMP, 1, '', '')
                 """, (performer, item_url))
 
-                # Get the ID of the newly inserted performer
                 performer_id = cursor.lastrowid
                 new_performers_added.append((performer, item_url))
+
+                # Update cache so subsequent rows find this performer
+                perf_by_name[performer] = {"id": performer_id, "urls": item_url, "crawls": 1, "aka": ""}
+                perf_names.append(performer)
 
             # Insert the item into the items table
             # Convert hits to integer if possible
@@ -172,23 +201,10 @@ def add_performers_from_items(items, db_path="performers.db"):
     conn.commit()
     conn.close()
 
-    # Print summary information
-    if new_performers_added:
-        print(f"Added {len(new_performers_added)} new performers to the database:")
-        for name, url in new_performers_added[:20]:  # Show first 20 new performers
-            print(f"  - {name} ({url})")
-        if len(new_performers_added) > 20:
-            print(f"  ... and {len(new_performers_added) - 20} more")
-
-    if updated_performers:
-        print(f"Updated {len(updated_performers)} existing performers with new content:")
-        for name, url in updated_performers[:20]:  # Show first 20 updated performers
-            print(f"  - {name} ({url})")
-        if len(updated_performers) > 20:
-            print(f"  ... and {len(updated_performers) - 20} more")
-
-    if not new_performers_added and not updated_performers:
-        print("No new performers or updates found.")
+    # Print summary (quiet — orchestator shows its own per-site summary)
+    if fuzzy_merged:
+        for alt, canon in fuzzy_merged:
+            print(f"  ~ merged '{alt}' -> '{canon}' (AKA)")
 
 
 def add_performers_from_csv(csv_file_path, db_path="performers.db"):
@@ -206,7 +222,6 @@ def add_performers_from_csv(csv_file_path, db_path="performers.db"):
         items = list(reader)
 
     add_performers_from_items(items, db_path)
-    print(f"Added performer data from {csv_file_path} to {db_path}")
 
 
 def main():
