@@ -9,32 +9,21 @@ This Python project uses `uv` as the package and environment manager.
 uv sync
 uv sync --extra dev     # includes pytest
 
-# Run all tests
+# Run tests
 uv run pytest test/unit/ -v
 
-# Run with coverage
-uv run pytest --cov=. -v
-
-# Scrape 10 pages (default) — extracts & updates DB automatically
+# --- Daily update (scrape 3 fresh pages from each site) ---
 uv run python orchestator.py
 
-# Scrape a specific site, 5 pages, 1s delay
+# More pages or specific site
 uv run python orchestator.py -site anvids_dapmodels -n 5 --delay 1
-
-# Keep going even if pages have no new content
-uv run python orchestator.py -site anvids_dapmodels -n 30 --delay 0.5 --no-stop
-
-# Reset status and start fresh
-uv run python orchestator.py --reset
+uv run python orchestator.py -n 30 --delay 0.5 --no-stop
 
 # Batch-extract old HTML files into CSV + DB
 uv run python orchestator.py --extract data/scrapes/crawl_12345
 
 # View results in web UI
 uv run python db_viewer.py
-
-# Add a new dependency
-uv add requests
 ```
 
 ## Code Style Guidelines

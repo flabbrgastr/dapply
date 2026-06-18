@@ -89,43 +89,48 @@ class Orchestator:
         self, limit_per_type: Optional[int] = None, site_filter: Optional[str] = None
     ) -> List[str]:
         """
-        Get the list of URLs that need to be processed (not completed).
+        Get the list of URLs to scrape.
+
+        When limit_per_type is set: generates fresh URLs from config, ignores status
+        (so repeated runs always scrape the requested pages).
+
+        When limit_per_type is None: uses status tracking to resume where left off.
 
         Args:
-            limit_per_type: Maximum number of URLs to return per type (if specified)
+            limit_per_type: Max pages per site. When set, ignores done/failed status.
             site_filter: Only return URLs from the specified site/config name
 
         Returns:
-            List of URLs that are pending or failed
+            List of URLs to scrape
         """
+        # When limit is specified: ignore status, generate fresh URLs
+        if limit_per_type is not None:
+            all_urls = self.url_generator.generate_all_urls()
+
+            if site_filter:
+                url_config_names = self._get_url_config_names(all_urls)
+                all_urls = [
+                    url for url in all_urls
+                    if url_config_names.get(url) == site_filter
+                ]
+
+            urls_by_type = self._group_urls_by_type(all_urls)
+            result = []
+            for url_type, urls in urls_by_type.items():
+                result.extend(urls[:limit_per_type])
+            return result
+
+        # No limit: use status tracking for resume
         all_todo_urls = self.url_generator.get_todo_urls()
 
-        # If site filter is specified, only include URLs from that site
         if site_filter:
             url_config_names = self._get_url_config_names(all_todo_urls)
             all_todo_urls = [
-                url for url in all_todo_urls if url_config_names.get(url) == site_filter
+                url for url in all_todo_urls
+                if url_config_names.get(url) == site_filter
             ]
 
-            if site_filter == "anvids_dapmodels" and not all_todo_urls:
-                all_urls = self.url_generator.generate_all_urls()
-                all_todo_urls = [
-                    url
-                    for url in all_urls
-                    if "models/niche/double_anal/page" in url
-                ]
-
-        if limit_per_type is None:
-            return all_todo_urls
-        else:
-            # Group URLs by type and take only the first N of each type
-            urls_by_type = self._group_urls_by_type(all_todo_urls)
-            limited_urls = []
-
-            for url_type, urls in urls_by_type.items():
-                limited_urls.extend(urls[:limit_per_type])
-
-            return limited_urls
+        return all_todo_urls
 
     def download_n_of_each_type(self, n: int = 3) -> None:
         """
@@ -700,10 +705,14 @@ def main():
     """
     Scrape sites, extract performer data, and store in the database.
 
-    Usage examples:
+    Daily update (scrapes 3 fresh pages from each site):
       uv run python orchestator.py
+
+    More pages or specific site:
       uv run python orchestator.py -site anvids_dapmodels -n 5 --delay 1
-      uv run python orchestator.py --reset
+      uv run python orchestator.py -n 30 --delay 0.5 --no-stop
+
+    Batch extract old HTML files:
       uv run python orchestator.py --extract data/scrapes/crawl_12345
     """
     import argparse
@@ -712,23 +721,20 @@ def main():
         description="Scrape performer data from adult sites"
     )
     parser.add_argument(
-        "-site", "--site", type=str, help="Site to scrape (from urls.yaml)"
+        "-site", "--site", type=str,
+        help="Site to scrape (from urls.yaml). Default: all sites",
     )
     parser.add_argument(
-        "-n", "--limit", type=int, default=10,
-        help="Number of pages to scrape (default: 10)",
+        "-n", "--limit", type=int, default=3,
+        help="Pages to scrape per site (default: 3)",
     )
     parser.add_argument(
-        "--delay", type=float, default=5.0,
-        help="Delay between requests in seconds (default: 5.0)",
+        "--delay", type=float, default=1.5,
+        help="Delay between requests in seconds (default: 1.5)",
     )
     parser.add_argument(
         "--no-stop", action="store_false", dest="stop_on_old", default=True,
         help="Don't stop when a page has no new content",
-    )
-    parser.add_argument(
-        "--reset", action="store_true",
-        help="Reset crawl status tracking",
     )
     parser.add_argument(
         "--extract", type=str, metavar="DIR",
@@ -738,12 +744,6 @@ def main():
     args = parser.parse_args()
     orchestator = Orchestator()
 
-    if args.reset:
-        orchestator.reset_workflow()
-        print("Status tracking reset.")
-        return
-
-    # Batch extraction mode
     if args.extract:
         from dbadd import add_performers_from_csv
         from extractor import process_html_files
@@ -754,19 +754,8 @@ def main():
         add_performers_from_csv("extracted.csv", "performers.db")
         return
 
-    # Show status before scraping
-    status = orchestator.get_status_summary()
-    print(f"URLs: {status['completed']}/{status['total']} done "
-          f"({status['progress_percent']:.0f}%)  "
-          f"{status['pending']} pending, {status['failed']} failed")
-
-    if status["total"] == 0:
-        print("No URLs configured. Check urls.yaml.")
-        return
-
-    # Run scrape (inline extraction + DB update happens automatically)
-    site = args.site or "all"
-    print(f"Scraping {args.limit} pages from '{site}'...")
+    site = args.site or "all sites"
+    print(f"Scraping {args.limit} page(s) from {site}...")
     orchestator.start_scraping_workflow(
         max_concurrent=1,
         delay_between_requests=args.delay,
@@ -775,10 +764,7 @@ def main():
         stop_on_no_new=args.stop_on_old,
     )
 
-    # Final status
-    final = orchestator.get_status_summary()
-    print(f"\nDone: {final['completed']}/{final['total']} URLs "
-          f"({final['progress_percent']:.0f}%)")
+    print(f"\nDone — check https://booksi.duckdns.org:8007/performers/")
 
 
 if __name__ == "__main__":
