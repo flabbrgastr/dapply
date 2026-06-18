@@ -107,8 +107,8 @@
             <h1>Performers Database Statistics</h1>
 
             <div class="nav-bar">
-                <a href="/">Back to Performers View</a>
-                <a href="/stats">Refresh Stats</a>
+                <a href="#" onclick="window.location.href=api(''); return false;">Back to Performers View</a>
+                <a href="#" onclick="window.location.href=api('stats'); return false;">Refresh Stats</a>
             </div>
 
             <div class="stats-grid" id="stats-summary">
@@ -196,6 +196,10 @@
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
             let statsData = {};
+            const BASE = window.location.pathname.replace(/\/+$/, "");
+            function api(path) {
+              return BASE + "/" + path.replace(/^\/+/, "");
+            }
 
             // Load stats when page loads
             document.addEventListener("DOMContentLoaded", function () {
@@ -203,7 +207,7 @@
             });
 
             function loadStats() {
-                fetch("/api/stats")
+                fetch(api("api/stats"))
                     .then((response) => response.json())
                     .then((data) => {
                         statsData = data;

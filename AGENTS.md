@@ -5,31 +5,36 @@
 This Python project uses `uv` as the package and environment manager.
 
 ```bash
-# Install dependencies
-uv pip install -r requirements.txt
+# Install dependencies (creates .venv + uv.lock)
+uv sync
+uv sync --extra dev     # includes pytest
 
 # Run all tests
-uv run pytest
+uv run pytest test/unit/ -v
 
-# Run specific test file
-uv run pytest test/unit/test_scraper.py
+# Run with coverage
+uv run pytest --cov=. -v
 
-# Run single test (preferred)
-uv run pytest test/unit/test_scraper.py::test_scraper_initialization
+# Scrape 10 pages (default) — extracts & updates DB automatically
+uv run python orchestator.py
 
-# Run all unit/integration tests
-uv run pytest test/unit/
-uv run pytest test/integration/
+# Scrape a specific site, 5 pages, 1s delay
+uv run python orchestator.py -site anvids_dapmodels -n 5 --delay 1
 
-# Run with coverage or verbose
-uv run pytest --cov=.
-uv run pytest -v
+# Keep going even if pages have no new content
+uv run python orchestator.py -site anvids_dapmodels -n 30 --delay 0.5 --no-stop
 
-# Run the web viewer
+# Reset status and start fresh
+uv run python orchestator.py --reset
+
+# Batch-extract old HTML files into CSV + DB
+uv run python orchestator.py --extract data/scrapes/crawl_12345
+
+# View results in web UI
 uv run python db_viewer.py
 
-# Run the orchestrator with default site
-uv run python orchestator.py -site anvids_dapmodels -n 30 --auto --delay 0.5 --no-stop --reset
+# Add a new dependency
+uv add requests
 ```
 
 ## Code Style Guidelines

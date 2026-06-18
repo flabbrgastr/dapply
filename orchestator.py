@@ -698,169 +698,87 @@ class Orchestator:
 
 def main():
     """
-    Main entry point for the orchestator with CLI arguments.
+    Scrape sites, extract performer data, and store in the database.
+
+    Usage examples:
+      uv run python orchestator.py
+      uv run python orchestator.py -site anvids_dapmodels -n 5 --delay 1
+      uv run python orchestator.py --reset
+      uv run python orchestator.py --extract data/scrapes/crawl_12345
     """
     import argparse
 
-    parser = argparse.ArgumentParser(description="Web Scraper Orchestator")
-    parser.add_argument(
-        "-n",
-        "--limit",
-        type=int,
-        default=10,
-        help="Limit number of pages per site (default: 10)",
+    parser = argparse.ArgumentParser(
+        description="Scrape performer data from adult sites"
     )
     parser.add_argument(
-        "-site", "--site", type=str, help="Only process the specified site name"
+        "-site", "--site", type=str, help="Site to scrape (from urls.yaml)"
     )
     parser.add_argument(
-        "--concurrent", type=int, default=3, help="Maximum concurrent requests"
+        "-n", "--limit", type=int, default=10,
+        help="Number of pages to scrape (default: 10)",
     )
     parser.add_argument(
-        "--delay",
-        type=float,
-        default=5.0,
+        "--delay", type=float, default=5.0,
         help="Delay between requests in seconds (default: 5.0)",
     )
     parser.add_argument(
-        "--jitter",
-        type=float,
-        nargs=2,
-        metavar=("MIN", "MAX"),
-        help="Random delay range between requests",
+        "--no-stop", action="store_false", dest="stop_on_old", default=True,
+        help="Don't stop when a page has no new content",
     )
     parser.add_argument(
-        "--reset", action="store_true", help="Reset the workflow status"
+        "--reset", action="store_true",
+        help="Reset crawl status tracking",
     )
     parser.add_argument(
-        "--extract",
-        type=str,
-        metavar="DIR",
-        help="Extract data from HTML files in the specified directory",
-    )
-    parser.add_argument(
-        "--dbadd",
-        action="store_true",
-        help="Update performers database after extraction",
-    )
-    parser.add_argument(
-        "--auto",
-        action="store_true",
-        help="Automatically extract and update DB after scraping",
-    )
-    parser.add_argument(
-        "--stop-on-old",
-        action="store_true",
-        default=True,
-        help="Stop scraping when a page yields no new URLs (default: True)",
-    )
-    parser.add_argument(
-        "--no-stop",
-        action="store_false",
-        dest="stop_on_old",
-        help="Disable auto-stop on old content",
-    )
-    parser.add_argument(
-        "--rm",
-        type=str,
-        metavar="SITE",
-        help="Remove all items for the specified site from CSV and DB",
-    )
-    parser.add_argument(
-        "--url",
-        type=str,
-        metavar="URL",
-        help="Process a specific single URL for testing duplication",
+        "--extract", type=str, metavar="DIR",
+        help="Extract HTML files from a crawl directory into CSV + DB",
     )
 
     args = parser.parse_args()
-
     orchestator = Orchestator()
-
-    jitter = tuple(args.jitter) if args.jitter else None
 
     if args.reset:
         orchestator.reset_workflow()
-        print("Workflow status reset.")
-
-    if args.rm:
-        from remover import remove_site_data
-
-        print(f"Removal Mode: Removing data for site '{args.rm}'...")
-        remove_site_data(args.rm)
+        print("Status tracking reset.")
         return
 
-    print("Web Scraper Orchestator")
-    print("=" * 30)
-
-    # Show initial status
-    status = orchestator.get_status_summary()
-    print(f"Total URLs: {status['total']}")
-    print(f"Completed: {status['completed']}")
-    print(f"Failed: {status['failed']}")
-    print(f"Pending: {status['pending']}")
-    print(f"Progress: {status['progress_percent']:.1f}%")
-    print()
-
+    # Batch extraction mode
     if args.extract:
-        from extractor import process_html_files
-
-        print(f"Extraction Mode: Processing {args.extract}...")
-        process_html_files(args.extract, "extracted.csv")
-
-        if args.dbadd:
-            from dbadd import add_performers_from_csv
-
-            print("Database Mode: Updating performers.db...")
-            add_performers_from_csv("extracted.csv", "performers.db")
-        return
-
-    if args.url:
-        print(f"Processing single URL: {args.url}")
-        # Process the specific URL for testing duplication
-        novelty_count, total_items, new_items = orchestator.process_single_url(
-            url=args.url, delay_between_requests=args.delay, random_delay_range=jitter
-        )
-        print(f"Processed {args.url}")
-        print(f"Total items found: {total_items}")
-        print(f"New items (not duplicates): {novelty_count}")
-        print(f"Already existed (duplicates): {total_items - novelty_count}")
-        return
-
-    # Start the workflow
-    print(f"Starting scraping workflow (limit={args.limit}, site={args.site})...")
-    orchestator.start_scraping_workflow(
-        max_concurrent=args.concurrent,
-        delay_between_requests=args.delay,
-        limit_per_url_type=args.limit,
-        site_filter=args.site,
-        random_delay_range=jitter,
-        stop_on_no_new=args.stop_on_old,
-    )
-
-    # Auto-process if requested
-    if args.auto and orchestator.crawl_name:
-        import os
-
         from dbadd import add_performers_from_csv
         from extractor import process_html_files
 
-        crawl_path = os.path.join(orchestator.output_dir, orchestator.crawl_name)
-        if os.path.exists(crawl_path):
-            print(f"\nAuto-processing results from {crawl_path}...")
-            process_html_files(crawl_path, "extracted.csv")
-            add_performers_from_csv("extracted.csv", "performers.db")
-        else:
-            print(f"\nNote: Skip auto-processing, directory not found: {crawl_path}")
+        print(f"Extracting from {args.extract}...")
+        process_html_files(args.extract, "extracted.csv")
+        print("Updating database...")
+        add_performers_from_csv("extracted.csv", "performers.db")
+        return
 
-    # Show final status
-    print("\nFinal Status:")
-    final_status = orchestator.get_status_summary()
-    print(f"Total URLs: {final_status['total']}")
-    print(f"Completed: {final_status['completed']}")
-    print(f"Failed: {final_status['failed']}")
-    print(f"Pending: {final_status['pending']}")
-    print(f"Progress: {final_status['progress_percent']:.1f}%")
+    # Show status before scraping
+    status = orchestator.get_status_summary()
+    print(f"URLs: {status['completed']}/{status['total']} done "
+          f"({status['progress_percent']:.0f}%)  "
+          f"{status['pending']} pending, {status['failed']} failed")
+
+    if status["total"] == 0:
+        print("No URLs configured. Check urls.yaml.")
+        return
+
+    # Run scrape (inline extraction + DB update happens automatically)
+    site = args.site or "all"
+    print(f"Scraping {args.limit} pages from '{site}'...")
+    orchestator.start_scraping_workflow(
+        max_concurrent=1,
+        delay_between_requests=args.delay,
+        limit_per_url_type=args.limit,
+        site_filter=args.site,
+        stop_on_no_new=args.stop_on_old,
+    )
+
+    # Final status
+    final = orchestator.get_status_summary()
+    print(f"\nDone: {final['completed']}/{final['total']} URLs "
+          f"({final['progress_percent']:.0f}%)")
 
 
 if __name__ == "__main__":

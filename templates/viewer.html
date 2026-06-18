@@ -134,8 +134,8 @@
       <h1>Performers Database Viewer</h1>
 
       <div class="nav-bar">
-        <a href="/">Performers View</a>
-        <a href="/stats">View Statistics</a>
+        <a href="#" onclick="showPerformers(); return false;">Performers View</a>
+        <a href="#" onclick="showStats(); return false;">View Statistics</a>
       </div>
 
       <div class="stats">
@@ -260,17 +260,23 @@
       let performersData = [];
       let currentSort = { column: "name", order: "asc" };
       let currentPerformerId = null;
+      // Base path for API calls — works behind a reverse proxy prefix
+      const BASE = window.location.pathname.replace(/\/+$/, "");
 
       // Load performers when page loads
       document.addEventListener("DOMContentLoaded", function () {
         loadPerformers();
       });
 
+      function api(path) {
+        return BASE + "/" + path.replace(/^\/+/, "");
+      }
+
       function loadPerformers() {
         const sortColumn = document.getElementById("sort-column").value;
         const sortOrder = document.getElementById("sort-order").value;
 
-        fetch(`/api/performers?sort_by=${sortColumn}&sort_order=${sortOrder}`)
+        fetch(api(`api/performers?sort_by=${sortColumn}&sort_order=${sortOrder}`))
           .then((response) => response.json())
           .then((data) => {
             performersData = data;
@@ -328,7 +334,7 @@
         const sortOrder = document.getElementById("items-sort-order").value;
 
         fetch(
-          `/api/performers/${performerId}/items?sort_by=${sortColumn}&sort_order=${sortOrder}`,
+          api(`api/performers/${performerId}/items?sort_by=${sortColumn}&sort_order=${sortOrder}`),
         )
           .then((response) => response.json())
           .then((data) => {
@@ -351,7 +357,7 @@
 
           // Format the source file to be clickable if it exists
           const sourceFileLink = item.source_file
-            ? `<a href="../${item.source_file}" target="_blank">${item.source_file}</a>`
+            ? `${item.source_file}`
             : "";
 
           row.innerHTML = `
@@ -375,11 +381,21 @@
           "none";
       }
 
+      function showPerformers() {
+        document.getElementById("performers-table").style.display = "table";
+        document.getElementById("performer-items-section").style.display = "none";
+        loadPerformers();
+      }
+
+      function showStats() {
+        window.location.href = api("stats");
+      }
+
       function updateRating(id) {
         const ratingInput = document.getElementById(`rating-${id}`);
         const rating = ratingInput.value;
 
-        fetch(`/api/performers/${id}`, {
+        fetch(api(`api/performers/${id}`), {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -410,7 +426,7 @@
           return;
         }
 
-        fetch("/api/performers", {
+        fetch(api("api/performers"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -437,7 +453,7 @@
 
       function deletePerformer(id) {
         if (confirm("Are you sure you want to delete this performer?")) {
-          fetch(`/api/performers/${id}`, {
+          fetch(api(`api/performers/${id}`), {
             method: "DELETE",
           })
             .then((response) => {
