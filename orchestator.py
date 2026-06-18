@@ -381,6 +381,28 @@ class Orchestator:
         site_indices: Dict[str, int] = {site: 0 for site in urls_by_site}
         active_sites: List[str] = [s for s, u in urls_by_site.items() if u]
         step = 0
+        import sys
+
+        # Build a helper to render per-site dots on one line
+        def _show_progress(force_newline=False):
+            parts = []
+            for s in sorted(urls_by_site.keys()):
+                done = s not in active_sites  # site finished
+                dots = site_pages.get(s, 0)
+                if done:
+                    parts.append(f"{s} {'▰' * max(dots,1)}✓")
+                elif dots:
+                    parts.append(f"{s} {'▰' * dots}")
+                else:
+                    parts.append(f"{s}")
+            line = "  " + "  ".join(parts)
+            if force_newline:
+                print(line)
+            else:
+                sys.stdout.write(line + "\r")
+                sys.stdout.flush()
+
+        _show_progress()
 
         while active_sites:
             for site in list(active_sites):
@@ -388,6 +410,7 @@ class Orchestator:
                 index = site_indices[site]
                 if index >= len(site_urls):
                     active_sites.remove(site)
+                    _show_progress()
                     continue
 
                 url = site_urls[index]
@@ -443,6 +466,10 @@ class Orchestator:
                             session_known_by_site[site].add(item["item_url"])
                 else:
                     self.url_generator.mark_url_failed(url)
+
+                _show_progress()
+
+        _show_progress(force_newline=True)
 
         # Compact one-line summary
         summaries = []
