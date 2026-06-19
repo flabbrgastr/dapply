@@ -220,13 +220,6 @@ def fetch_profiles(
             for aka in data["akas"]:
                 if aka.lower() != canonical_name.lower() and aka.lower() not in existing_aka.lower():
                     new_akas.append(aka)
-                    # Also insert AKA as separate performer entry if not exists
-                    c.execute("SELECT id FROM performers WHERE name = ?", (aka,))
-                    if not c.fetchone():
-                        c.execute("""
-                            INSERT INTO performers (name, urls, last_updated, crawls, aka, validated)
-                            VALUES (?, '', CURRENT_TIMESTAMP, 0, '', 0)
-                        """, (aka,))
 
             if new_akas:
                 merged = (existing_aka + " | " + " | ".join(new_akas)).strip(" | ")
