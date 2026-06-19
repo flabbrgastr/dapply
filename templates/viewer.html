@@ -186,6 +186,10 @@
             <option value="asc">Ascending</option>
             <option value="desc">Descending</option>
           </select>
+          <label style="margin-left:15px; font-size:13px;">
+            <input type="checkbox" id="show-aliases" onchange="loadPerformers()">
+            Show AKA aliases
+          </label>
         </div>
         <div>
           <input
@@ -304,8 +308,9 @@
       function loadPerformers() {
         const sortColumn = document.getElementById("sort-column").value;
         const sortOrder = document.getElementById("sort-order").value;
+        const showAliases = document.getElementById("show-aliases").checked ? "1" : "0";
 
-        fetch(api(`api/performers?sort_by=${sortColumn}&sort_order=${sortOrder}`))
+        fetch(api(`api/performers?sort_by=${sortColumn}&sort_order=${sortOrder}&show_aliases=${showAliases}`))
           .then((response) => response.json())
           .then((data) => {
             performersData = data;

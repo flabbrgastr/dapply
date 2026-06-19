@@ -26,6 +26,7 @@ def get_performers():
     # Get sort parameters
     sort_by = request.args.get("sort_by", "name")
     sort_order = request.args.get("sort_order", "asc")
+    show_aliases = request.args.get("show_aliases", "0") == "1"
 
     # Validate sort parameters to prevent injection
     valid_columns = ["id", "name", "last_updated", "crawls", "rating"]
@@ -34,10 +35,15 @@ def get_performers():
     if sort_order not in ["asc", "desc"]:
         sort_order = "asc"
 
-    # Query performers with sorting
-    performers = conn.execute(
-        f"SELECT * FROM performers ORDER BY {sort_by} {sort_order}"
-    ).fetchall()
+    # Filter out AKA placeholders (crawls=0, not validated) by default
+    if not show_aliases:
+        performers = conn.execute(
+            f"SELECT * FROM performers WHERE crawls > 0 OR validated = 1 ORDER BY {sort_by} {sort_order}"
+        ).fetchall()
+    else:
+        performers = conn.execute(
+            f"SELECT * FROM performers ORDER BY {sort_by} {sort_order}"
+        ).fetchall()
 
     conn.close()
 
