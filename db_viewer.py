@@ -93,6 +93,34 @@ def delete_performer(performer_id):
     return jsonify({"message": "Performer deleted successfully"})
 
 
+@app.route("/api/performers/<int:performer_id>/features")
+def get_performer_features(performer_id):
+    """Return performer_features + scenes for this performer."""
+    conn = get_db_connection()
+    feat = conn.execute(
+        "SELECT * FROM performer_features WHERE performer_id = ?",
+        (performer_id,),
+    ).fetchone()
+    scenes = conn.execute(
+        "SELECT * FROM performer_scenes WHERE performer_id = ? ORDER BY scene_title",
+        (performer_id,),
+    ).fetchall()
+    # Also get AKA and validated
+    performer = conn.execute(
+        "SELECT name, aka, validated FROM performers WHERE id = ?",
+        (performer_id,),
+    ).fetchone()
+    conn.close()
+    result = {
+        "features": dict(feat) if feat else None,
+        "scenes": [dict(s) for s in scenes],
+        "name": performer["name"] if performer else "",
+        "aka": performer["aka"] if performer else "",
+        "validated": bool(performer["validated"]) if performer else False,
+    }
+    return jsonify(result)
+
+
 @app.route("/api/performers/<int:performer_id>/items")
 def get_performer_items(performer_id):
     conn = get_db_connection()
@@ -119,6 +147,20 @@ def get_performer_items(performer_id):
     items_list = [dict(item) for item in items]
 
     return jsonify(items_list)
+
+
+@app.route("/api/refdb")
+def get_refdb_stats():
+    """Stats about the reference database (profile scraping progress)."""
+    conn = get_db_connection()
+    total_valid = conn.execute("SELECT COUNT(*) FROM performers WHERE validated = 1").fetchone()[0]
+    scraped = conn.execute("SELECT COUNT(*) FROM performer_features").fetchone()[0]
+    conn.close()
+    return jsonify({
+        "validated": total_valid,
+        "scraped": scraped,
+        "pending": total_valid - scraped,
+    })
 
 
 @app.route("/stats")

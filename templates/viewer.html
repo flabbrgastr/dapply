@@ -151,6 +151,14 @@
           <div class="stat-number" id="avg-rating">0.0</div>
           <div class="stat-label">Avg Rating</div>
         </div>
+        <div class="stat-item">
+          <div class="stat-number" id="refdb-validated">0</div>
+          <div class="stat-label">RefDB Validated</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="refdb-scraped">0</div>
+          <div class="stat-label">Profiles Scraped</div>
+        </div>
       </div>
 
       <div class="add-form">
@@ -195,6 +203,9 @@
             <th onclick="sortTable('id')">ID</th>
             <th onclick="sortTable('name')">Name</th>
             <th onclick="sortTable('aka')">AKA</th>
+            <th>Ref</th>
+            <th>Nat</th>
+            <th>Age</th>
             <th onclick="sortTable('crawls')">Crawls</th>
             <th onclick="sortTable('last_updated')">Last Updated</th>
             <th onclick="sortTable('rating')">Rating</th>
@@ -206,12 +217,30 @@
         </tbody>
       </table>
 
-      <!-- Section to display performer items -->
+      <!-- Section to display performer items + features -->
       <div id="performer-items-section" style="display: none; margin-top: 30px">
         <h2 id="items-header">Items for Performer</h2>
         <button onclick="goBackToPerformers()" style="margin-bottom: 15px">
           ← Back to Performers
         </button>
+
+        <!-- Features panel -->
+        <div id="features-panel" style="margin-bottom:20px; padding:15px; background:#f0f8ff; border-radius:5px; border:1px solid #b8d4e3; display:none;">
+          <div style="display:flex; gap:30px; flex-wrap:wrap; align-items:center;">
+            <div><strong>AKA:</strong> <span id="feat-aka"></span></div>
+            <div><strong>Nationalität:</strong> <span id="feat-nat"></span></div>
+            <div><strong>Alter:</strong> <span id="feat-age"></span></div>
+            <div><strong>Szenen:</strong> <span id="feat-scenes"></span></div>
+          </div>
+          <div style="margin-top:10px;">
+            <strong>Tags:</strong>
+            <div id="feat-tags" style="margin-top:5px; display:flex; flex-wrap:wrap; gap:4px;"></div>
+          </div>
+          <div style="margin-top:10px;" id="feat-scene-list">
+            <strong>Scene-Liste:</strong>
+            <div id="feat-scene-items" style="margin-top:5px; max-height:300px; overflow-y:auto;"></div>
+          </div>
+        </div>
 
         <div class="controls">
           <div>
@@ -293,7 +322,8 @@
         data.forEach((performer) => {
           const row = document.createElement("tr");
 
-          // Rating input with automatic saving
+          const validated = performer.validated ? "✅" : "";
+
           const ratingCell = document.createElement("td");
           ratingCell.innerHTML = `
                     <input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" onchange="updateRating(${performer.id})">
@@ -301,15 +331,32 @@
 
           row.innerHTML = `
                     <td>${performer.id}</td>
-                    <td><a href="#" onclick="viewPerformerItems(${performer.id}, '${performer.name}')">${performer.name}</a></td>
+                    <td><a href="#" onclick="viewPerformerItems(${performer.id}, '${performer.name.replace(/'/g, "\\'")}')">${performer.name}</a></td>
                     <td>${performer.aka || ""}</td>
+                    <td>${validated}</td>
+                    <td id="nat-${performer.id}">…</td>
+                    <td id="age-${performer.id}">…</td>
                     <td>${performer.crawls || 0}</td>
-                    <td>${performer.last_updated || ""}</td>
+                    <td>${performer.last_updated || ""}
                 `;
           row.appendChild(ratingCell);
           row.innerHTML += `<td><button class="update-btn" onclick="deletePerformer(${performer.id})">Delete</button></td>`;
 
           tbody.appendChild(row);
+
+          // Fetch features asynchronously for validated performers
+          if (performer.validated) {
+            fetch(api("api/performers/" + performer.id + "/features"))
+              .then(r => r.json())
+              .then(data => {
+                const f = data.features;
+                if (f) {
+                  if (f.nationality) document.getElementById("nat-" + performer.id).textContent = f.nationality;
+                  if (f.age) document.getElementById("age-" + performer.id).textContent = f.age;
+                }
+              })
+              .catch(() => {});
+          }
         });
       }
 
@@ -324,6 +371,54 @@
         // Update header with performer name
         document.getElementById("items-header").textContent =
           `Items for ${performerName}`;
+
+        // Load features
+        fetch(api("api/performers/" + performerId + "/features"))
+          .then(r => r.json())
+          .then(data => {
+            const panel = document.getElementById("features-panel");
+            const f = data.features;
+            if (f) {
+              document.getElementById("feat-aka").textContent = data.aka || "-";
+              document.getElementById("feat-nat").textContent = f.nationality || "-";
+              document.getElementById("feat-age").textContent = f.age != null ? f.age : "-";
+              document.getElementById("feat-scenes").textContent = f.scene_count || 0;
+              
+              // Tags as badges
+              const tagDiv = document.getElementById("feat-tags");
+              tagDiv.innerHTML = "";
+              if (f.tags) {
+                f.tags.split(", ").forEach(t => {
+                  const badge = document.createElement("span");
+                  badge.textContent = t;
+                  badge.style.cssText = "background:#e7f3ff; border:1px solid #b8d4e3; border-radius:12px; padding:2px 10px; font-size:12px;";
+                  tagDiv.appendChild(badge);
+                });
+              }
+              
+              // Scene list
+              const sceneDiv = document.getElementById("feat-scene-items");
+              sceneDiv.innerHTML = "";
+              if (data.scenes && data.scenes.length > 0) {
+                const list = document.createElement("ul");
+                list.style.cssText = "list-style:none; padding:0; margin:0;";
+                data.scenes.forEach(s => {
+                  const li = document.createElement("li");
+                  li.style.cssText = "padding:4px 0; border-bottom:1px solid #eee;";
+                  li.innerHTML = `<a href="${s.scene_url}" target="_blank" style="text-decoration:none;">${s.scene_title}</a>`;
+                  list.appendChild(li);
+                });
+                sceneDiv.appendChild(list);
+              } else {
+                sceneDiv.textContent = "(keine)";
+              }
+              
+              panel.style.display = "block";
+            } else {
+              panel.style.display = "none";
+            }
+          })
+          .catch(() => {});
 
         // Load items for this performer
         loadPerformerItems(performerId);
@@ -534,6 +629,15 @@
 
         document.getElementById("avg-rating").textContent =
           avgRating.toFixed(2);
+
+        // RefDB stats
+        fetch(api("api/refdb"))
+          .then(r => r.json())
+          .then(stats => {
+            document.getElementById("refdb-validated").textContent = stats.validated || 0;
+            document.getElementById("refdb-scraped").textContent = stats.scraped || 0;
+          })
+          .catch(() => {});
       }
     </script>
   </body>
