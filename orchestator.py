@@ -708,8 +708,22 @@ def main():
         "--extract", type=str, metavar="DIR",
         help="Extract HTML files from a crawl directory into CSV + DB",
     )
+    parser.add_argument(
+        "--fetch-profiles", action="store_true",
+        help="Scrape performer profile pages from analvids (langsam, random delay)",
+    )
+    parser.add_argument(
+        "--max-profiles", type=int, default=None,
+        help="Limit profiles to scrape (mit --fetch-profiles)",
+    )
 
     args = parser.parse_args()
+
+    if args.fetch_profiles:
+        from profile_scraper import fetch_profiles
+        fetch_profiles(max_profiles=args.max_profiles)
+        return
+
     orchestator = Orchestator()
 
     if args.extract:

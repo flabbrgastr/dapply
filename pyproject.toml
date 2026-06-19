@@ -11,6 +11,8 @@ dependencies = [
     "lxml>=4.9.0",
     "pandas>=2.0.0",
     "Flask>=2.0.0",
+    "rapidfuzz>=3.14.5",
+    "jellyfish>=1.2.1",
 ]
 
 [project.optional-dependencies]

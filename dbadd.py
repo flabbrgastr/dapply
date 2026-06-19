@@ -54,7 +54,7 @@ def create_db(db_path):
         )
     ''')
 
-    # Migration: Add aka and rating if they are missing from an old database
+    # Migration: Add aka, rating, validated if missing
     cursor.execute("PRAGMA table_info(performers)")
     columns = [column[1] for column in cursor.fetchall()]
 
@@ -62,6 +62,8 @@ def create_db(db_path):
         cursor.execute("ALTER TABLE performers ADD COLUMN aka TEXT")
     if 'rating' not in columns:
         cursor.execute("ALTER TABLE performers ADD COLUMN rating TEXT")
+    if 'validated' not in columns:
+        cursor.execute("ALTER TABLE performers ADD COLUMN validated INTEGER DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -82,9 +84,9 @@ def add_performers_from_items(items, db_path="performers.db"):
     cursor = conn.cursor()
 
     # Load all existing performers for fuzzy matching
-    cursor.execute("SELECT id, name, urls, crawls, aka FROM performers")
+    cursor.execute("SELECT id, name, urls, crawls, aka, validated FROM performers")
     all_rows = cursor.fetchall()
-    perf_by_name: dict = {row[1]: {"id": row[0], "urls": row[2], "crawls": row[3], "aka": row[4] or ""} for row in all_rows}
+    perf_by_name: dict = {row[1]: {"id": row[0], "urls": row[2], "crawls": row[3], "aka": row[4] or "", "validated": bool(row[5])} for row in all_rows}
     perf_names: list = list(perf_by_name.keys())
 
     new_performers_added = []
@@ -161,6 +163,12 @@ def add_performers_from_items(items, db_path="performers.db"):
                 # Update the record
                 updated_urls_str = '|'.join(sorted(list(existing_urls)))
 
+                # Check if model entry → validate performer
+                is_model = title.startswith("Model: ")
+                if is_model and not result["validated"]:
+                    cursor.execute("UPDATE performers SET validated = 1 WHERE id = ?", (performer_id,))
+                    perf_by_name[matched_name]["validated"] = True
+
                 cursor.execute("""
                     UPDATE performers
                     SET urls = ?,
@@ -171,16 +179,18 @@ def add_performers_from_items(items, db_path="performers.db"):
 
             else:
                 # New performer
+                is_model = title.startswith("Model: ")
+                val = 1 if is_model else 0
                 cursor.execute("""
-                    INSERT INTO performers (name, urls, last_updated, crawls, aka, rating)
-                    VALUES (?, ?, CURRENT_TIMESTAMP, 1, '', '')
-                """, (performer, item_url))
+                    INSERT INTO performers (name, urls, last_updated, crawls, aka, rating, validated)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, 1, '', '', ?)
+                """, (performer, item_url, val))
 
                 performer_id = cursor.lastrowid
                 new_performers_added.append((performer, item_url))
 
                 # Update cache so subsequent rows find this performer
-                perf_by_name[performer] = {"id": performer_id, "urls": item_url, "crawls": 1, "aka": ""}
+                perf_by_name[performer] = {"id": performer_id, "urls": item_url, "crawls": 1, "aka": "", "validated": bool(val)}
                 perf_names.append(performer)
 
             # Insert the item into the items table
@@ -236,7 +246,7 @@ def dedup_performers(db_path="performers.db", force=False):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cursor.execute('SELECT id, name, urls, crawls, aka FROM performers WHERE name != "NO_NAME" ORDER BY name')
+    cursor.execute('SELECT id, name, urls, crawls, aka, validated FROM performers WHERE name != "NO_NAME" ORDER BY name')
     rows = cursor.fetchall()
 
     name_to_entry = {r[1]: r for r in rows}
@@ -284,13 +294,29 @@ def dedup_performers(db_path="performers.db", force=False):
             keep_id = keep_entry[0]
             remove_id = remove_entry[0]
 
-            k_count = item_counts.get(keep_id, 0)
-            r_count = item_counts.get(remove_id, 0)
+            k_valid = bool(keep_entry[5])
+            r_valid = bool(remove_entry[5])
 
-            # Skip if both have >5 items (likely different people)
-            if not force and k_count > 5 and r_count > 5:
+            # Both validated → different canonical names, skip
+            if k_valid and r_valid:
                 skipped_high += 1
                 continue
+
+            # One validated → merge (unvalidated is alias/typo)
+            if (k_valid or r_valid) and not force:
+                # Ensure validated name is the one we keep
+                if r_valid and not k_valid:
+                    keep, remove = remove, keep
+                    keep_entry, remove_entry = remove_entry, keep_entry
+                    keep_id, remove_id = remove_id, keep_id
+                # Will merge below — no further check needed
+            else:
+                k_count = item_counts.get(keep_id, 0)
+                r_count = item_counts.get(remove_id, 0)
+                # Skip if both have >5 items (likely different people)
+                if not force and k_count > 5 and r_count > 5:
+                    skipped_high += 1
+                    continue
 
             cursor.execute('SELECT urls, crawls, aka FROM performers WHERE id = ?', (keep_id,))
             r = cursor.fetchone()
