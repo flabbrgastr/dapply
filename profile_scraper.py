@@ -115,6 +115,13 @@ def _scrape_profile(url: str) -> Optional[Dict]:
     if age_match:
         age = int(age_match.group(1))
 
+    # AKA / Also known as
+    akas = []
+    aka_match = re.search(r"Also known as:\s*([A-Za-z0-9,\.\s\-]+?)(?=Tags|$)", body_text)
+    if aka_match:
+        aka_raw = aka_match.group(1).strip()
+        akas = [a.strip() for a in aka_raw.split(',') if a.strip()]
+
     # Tags from <td class="model__tags">
     tags = []
     tag_td = soup.select_one("td.model__tags")
@@ -148,6 +155,7 @@ def _scrape_profile(url: str) -> Optional[Dict]:
         "tags": tags,
         "scenes": scenes,
         "scene_count": len(scenes),
+        "akas": akas,
     }
 
 
@@ -200,6 +208,30 @@ def fetch_profiles(
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """, (prof["id"], data["nationality"], data["age"], tags_str, data["scene_count"]))
 
+        # Merge AKAs into performers table
+        if data["akas"]:
+            # Get existing AKA field
+            c.execute("SELECT aka, name FROM performers WHERE id = ?", (prof["id"],))
+            current = c.fetchone()
+            existing_aka = current[0] or "" if current else ""
+            canonical_name = current[1] if current else prof["name"]
+
+            new_akas = []
+            for aka in data["akas"]:
+                if aka.lower() != canonical_name.lower() and aka.lower() not in existing_aka.lower():
+                    new_akas.append(aka)
+                    # Also insert AKA as separate performer entry if not exists
+                    c.execute("SELECT id FROM performers WHERE name = ?", (aka,))
+                    if not c.fetchone():
+                        c.execute("""
+                            INSERT INTO performers (name, urls, last_updated, crawls, aka, validated)
+                            VALUES (?, '', CURRENT_TIMESTAMP, 0, '', 0)
+                        """, (aka,))
+
+            if new_akas:
+                merged = (existing_aka + " | " + " | ".join(new_akas)).strip(" | ")
+                c.execute("UPDATE performers SET aka = ? WHERE id = ?", (merged, prof["id"]))
+
         # Save scenes
         c.execute("DELETE FROM performer_scenes WHERE performer_id = ?", (prof["id"],))
         for scene in data["scenes"]:
@@ -213,7 +245,8 @@ def fetch_profiles(
 
         # Compact line
         age_str = str(data['age']) if data['age'] is not None else "?"
-        print(f"✓ {data['nationality']:12s} {age_str:>2s}  ({len(data['tags'])} tags, {data['scene_count']} scenes)")
+        aka_str = f" AKA: {', '.join(data['akas'])}" if data['akas'] else ""
+        print(f"✓ {data['nationality']:12s} {age_str:>2s}  ({len(data['tags'])} tags, {data['scene_count']} scenes){aka_str}")
 
         if i < len(profiles):
             time.sleep(random.uniform(*delay_range))
