@@ -1,17 +1,28 @@
+"""
+Web UI for browsing and editing the performer database.
+Flask app serving the viewer template and REST API.
+"""
+
 import os
-import sqlite3
+import re
+from io import BytesIO
+from collections import Counter
 
 from flask import Flask, jsonify, render_template, request
+import requests as http_requests
+from PIL import Image as PIL_Image
 
-app = Flask(__name__)
+import sqlite3
 
-DATABASE = "performers.db"
+from dbadd import create_db
+from performer_repository import SqlitePerformerRepository
 
+app = Flask(__name__,
+    static_folder=os.path.join(os.path.dirname(__file__), "static"),
+    static_url_path="/static",
+)
 
-def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row  # Allows us to access columns by name
-    return conn
+repo = SqlitePerformerRepository()
 
 
 @app.route("/")
@@ -21,152 +32,516 @@ def index():
 
 @app.route("/api/performers")
 def get_performers():
-    conn = get_db_connection()
-
-    # Get sort parameters
     sort_by = request.args.get("sort_by", "name")
     sort_order = request.args.get("sort_order", "asc")
     show_aliases = request.args.get("show_aliases", "0") == "1"
-
-    # Validate sort parameters to prevent injection
-    valid_columns = ["id", "name", "last_updated", "crawls", "rating"]
-    if sort_by not in valid_columns:
-        sort_by = "name"
-    if sort_order not in ["asc", "desc"]:
-        sort_order = "asc"
-
-    # Filter out AKA placeholders (crawls=0, not validated) by default
-    if not show_aliases:
-        performers = conn.execute(
-            f"SELECT * FROM performers WHERE crawls > 0 OR validated = 1 ORDER BY {sort_by} {sort_order}"
-        ).fetchall()
-    else:
-        performers = conn.execute(
-            f"SELECT * FROM performers ORDER BY {sort_by} {sort_order}"
-        ).fetchall()
-
-    conn.close()
-
-    # Convert to list of dicts for JSON serialization
-    performers_list = [dict(p) for p in performers]
-
-    return jsonify(performers_list)
+    dap_only = request.args.get("dap_only", "0") == "1"
+    search_q = request.args.get("q", "").strip()
+    limit = request.args.get("limit", None)
+    performers = repo.search(
+        q=search_q, sort_by=sort_by, sort_order=sort_order,
+        show_aliases=show_aliases, dap_only=dap_only, limit=limit,
+    )
+    return jsonify(performers)
 
 
 @app.route("/api/performers/<int:performer_id>", methods=["PUT"])
 def update_performer(performer_id):
-    from flask import request
-
     data = request.get_json()
     rating = data.get("rating")
-
-    conn = get_db_connection()
-    conn.execute(
-        "UPDATE performers SET rating = ? WHERE id = ?", (rating, performer_id)
-    )
-    conn.commit()
-    conn.close()
-
+    repo.update_rating(performer_id, rating)
     return jsonify({"message": "Performer updated successfully"})
 
 
 @app.route("/api/performers", methods=["POST"])
 def add_performer():
-    from flask import request
-
     data = request.get_json()
     name = data.get("name")
     rating = data.get("rating", "")
-
     if not name:
         return jsonify({"error": "Name is required"}), 400
-
-    conn = get_db_connection()
-    conn.execute("INSERT INTO performers (name, rating) VALUES (?, ?)", (name, rating))
-    conn.commit()
-    conn.close()
-
+    repo.insert(name, rating)
     return jsonify({"message": "Performer added successfully"})
+
+
+@app.route("/api/performers/<int:performer_id>/confirm", methods=["POST"])
+def confirm_performer(performer_id):
+    """Confirm a performer name and add to refdb as manually verified."""
+    data = request.get_json() or {}
+    correct_name = data.get("name", "").strip()
+
+    performer = repo.get_by_id(performer_id)
+    if not performer:
+        return jsonify({"error": "Performer not found"}), 404
+
+    current_name = performer["name"]
+    target_name = correct_name if correct_name else current_name
+
+    # Update performer name if corrected
+    if correct_name and correct_name != current_name:
+        repo.update_name(performer_id, correct_name)
+        # Also update AKA
+        if current_name not in (performer.get("aka") or ""):
+            repo.update_aka(performer_id, current_name)
+
+    # Add to refdb_models if not already there
+    conn = sqlite3.connect("performers.db")
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO refdb_models (name, profile_url) VALUES (?, ?)",
+            (target_name, ""),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO refdb_validated_tags (tag, refdb_model_id, match_type) "
+            "SELECT ?, id, 'manual' FROM refdb_models WHERE name = ?",
+            (target_name, target_name),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    repo.set_validated(performer_id)
+
+    return jsonify({"message": "Performer confirmed", "name": target_name})
+
+
+@app.route("/api/performers/<int:performer_id>/reassign", methods=["POST"])
+def reassign_performer(performer_id):
+    """
+    Reassign all items from one performer to another, then optionally delete the source.
+    Body: { "target_name": "...", "delete_source": true }
+    """
+    import sqlite3
+    data = request.get_json() or {}
+    target_name = data.get("target_name", "").strip()
+    delete_source = data.get("delete_source", True)
+
+    if not target_name:
+        return jsonify({"error": "target_name is required"}), 400
+
+    source = repo.get_by_id(performer_id)
+    if not source:
+        return jsonify({"error": "Source performer not found"}), 404
+    source_name = source["name"]
+
+    # Find or create target
+    target = repo.get_by_name(target_name)
+    if target:
+        target_id = target["id"]
+    else:
+        target_id = repo.insert(target_name)
+
+    # Move items
+    repo.reassign_items(performer_id, target_id)
+
+    # Optionally delete source
+    if delete_source:
+        repo.update_aka(target_id, source_name)
+        repo.delete(performer_id)
+
+    repo.set_validated(target_id)
+
+    return jsonify({
+        "message": f"Items reassigned from '{source_name}' to '{target_name}'",
+        "source_id": performer_id,
+        "target_id": target_id,
+        "source_deleted": delete_source,
+    })
+
+
+@app.route("/api/items/<int:item_id>/reassign", methods=["POST"])
+def reassign_item(item_id):
+    """Reassign a single item to a different performer."""
+    data = request.get_json() or {}
+    target_name = data.get("target_name", "").strip()
+    if not target_name:
+        return jsonify({"error": "target_name required"}), 400
+
+    # Get current performer name
+    item_info = repo.get_item_by_id(item_id)
+    if not item_info:
+        return jsonify({"error": "Item not found"}), 404
+    source_name = item_info.get("name") or "(unassigned)"
+
+    # Find or create target
+    target = repo.get_by_name(target_name)
+    if target:
+        target_id = target["id"]
+    else:
+        target_id = repo.insert(target_name)
+
+    repo.assign_item(item_id, target_id)
+    return jsonify({"message": f"Item #{item_id} moved from '{source_name}' to '{target_name}'"})
+
+
+@app.route("/api/items/<int:item_id>/unassign", methods=["POST"])
+def unassign_item(item_id):
+    """Remove item from its performer (set performer_id = NULL)."""
+    item_info = repo.get_item_by_id(item_id)
+    if not item_info:
+        return jsonify({"error": "Item not found"}), 404
+    source_name = item_info.get("name") or "(unassigned)"
+    repo.unassign_item(item_id)
+    return jsonify({"message": f"Item #{item_id} unassigned from '{source_name}'"})
+
+
+@app.route("/api/items/<int:item_id>", methods=["DELETE"])
+def delete_item(item_id):
+    """Delete a single item."""
+    repo.delete_item(item_id)
+    return jsonify({"message": f"Item #{item_id} deleted"})
+
+
+@app.route("/api/performers/unassigned/items")
+def unassigned_items():
+    """Return all items with no performer assigned."""
+    sort_by = request.args.get("sort_by", "added_date")
+    sort_order = request.args.get("sort_order", "desc")
+    items = repo.get_unassigned_items(sort_by=sort_by, sort_order=sort_order)
+    return jsonify(items)
 
 
 @app.route("/api/performers/<int:performer_id>", methods=["DELETE"])
 def delete_performer(performer_id):
-    conn = get_db_connection()
-    conn.execute("DELETE FROM performers WHERE id = ?", (performer_id,))
-    conn.commit()
-    conn.close()
+    repo.delete(performer_id)
+    return jsonify({"message": "Performer deleted, items unassigned"})
 
-    return jsonify({"message": "Performer deleted successfully"})
+
+@app.route("/api/performers/lookup-analvids")
+def lookup_analvids():
+    """Search analvids.com for a performer name and return matching models."""
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"results": []})
+
+    try:
+        from urllib.parse import quote
+
+        url = f"https://www.analvids.com/models?search={quote(q)}"
+        resp = http_requests.get(url, timeout=15,
+                                 headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            return jsonify({"results": [], "error": f"analvids returned {resp.status_code}"})
+
+        html = resp.text
+        results = []
+        seen = set()
+
+        cards = html.split('class="model-top__img"')
+        for card in cards[1:]:
+            url_match = re.search(
+                r'href="(https://www\.analvids\.com/model/(\d+)/([^"]+))"', card[:500]
+            )
+            if not url_match:
+                continue
+            profile_url = url_match.group(1)
+            model_id = int(url_match.group(2))
+            slug = url_match.group(3)
+            name_match = re.search(
+                r'class="model-top__name"[^>]*>([^<]+)<', card[:800]
+            )
+            if not name_match:
+                continue
+            name = name_match.group(1).strip()
+            if name in seen:
+                continue
+            seen.add(name)
+
+            scenes = None
+            scene_match = re.search(r'<b>(\d+)</b>\s*scenes?', card[:1500])
+            if scene_match:
+                scenes = int(scene_match.group(1))
+
+            nationality = None
+            flag_match = re.search(r'/assets/img/flags/(\w+)\.png', card[:800])
+            if flag_match:
+                nationality = flag_match.group(1).upper()
+
+            results.append({
+                "name": name, "url": profile_url,
+                "model_id": model_id, "scenes": scenes,
+                "nationality": nationality,
+            })
+
+        return jsonify({"results": results[:10]})
+    except Exception as e:
+        return jsonify({"results": [], "error": str(e)})
+
+
+@app.route("/api/performers/lookup-analvids-url")
+def lookup_analvids_url():
+    """Fetch an analvids model profile by URL and extract performer info."""
+    raw = request.args.get("url", "").strip()
+    if not raw:
+        return jsonify({"error": "Paste a name or analvids.com URL"})
+
+    try:
+        from urllib.parse import quote
+
+        if "." not in raw or raw.startswith("http"):
+            profile_url = raw
+            if not profile_url.startswith("http"):
+                parts = raw.strip().split()
+                candidates = []
+                if len(parts) >= 2:
+                    candidates.append('_'.join(p.lower() for p in parts))
+                    candidates.append(''.join(p.lower() for p in parts))
+                else:
+                    candidates.append(raw.lower())
+
+                profile_url = None
+                for candidate in candidates:
+                    test_url = f"https://www.analvids.com/model/0/{candidate}"
+                    resp = http_requests.get(
+                        test_url, timeout=10,
+                        headers={"User-Agent": "Mozilla/5.0"},
+                        allow_redirects=True,
+                    )
+                    if resp.status_code == 200 and '/model/' in resp.url and resp.url != test_url:
+                        profile_url = resp.url
+                        break
+
+                if not profile_url:
+                    search_url = f"https://www.analvids.com/search/{quote(raw)}"
+                    resp = http_requests.get(
+                        search_url, timeout=10,
+                        headers={"User-Agent": "Mozilla/5.0"},
+                        allow_redirects=False,
+                    )
+                    loc = resp.headers.get('Location', '')
+                    if resp.status_code in (301, 302) and '/model/' in loc:
+                        if not loc.startswith('http'):
+                            loc = 'https://www.analvids.com' + loc
+                        profile_url = loc
+
+                if not profile_url:
+                    resp = http_requests.get(
+                        f"https://html.duckduckgo.com/html/?q=analvids.com+{quote(raw)}",
+                        timeout=10, headers={"User-Agent": "Mozilla/5.0"},
+                    )
+                    m = re.search(r'analvids\.com/model/(\d+)/([a-z_]+)', resp.text)
+                    if m:
+                        profile_url = f"https://www.analvids.com/model/{m.group(1)}/{m.group(2)}"
+        else:
+            profile_url = raw
+
+        resp = http_requests.get(
+            profile_url, timeout=15,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        if resp.status_code != 200:
+            return jsonify({"error": f"analvids returned {resp.status_code}"})
+
+        html = resp.text
+        url_match = re.search(r'/model/(\d+)', profile_url)
+        model_id = int(url_match.group(1)) if url_match else None
+
+        name = None
+        name_match = re.search(r'<h1[^>]*>([^<]+)</h1>', html)
+        if name_match:
+            name = name_match.group(1).strip()
+        if not name:
+            name_match = re.search(r'<title>([^|<]+)', html)
+            if name_match:
+                name = name_match.group(1).strip()
+
+        nationality = None
+        flag_match = re.search(r'/assets/img/flags/(\w+)\.png', html)
+        if flag_match:
+            nationality = flag_match.group(1).upper()
+
+        scenes = None
+        scene_match = re.search(r'<b>(\d+)</b>\s*scenes?', html)
+        if scene_match:
+            scenes = int(scene_match.group(1))
+
+        image = None
+        img_match = re.search(r'class="model__bg"[^>]*src="([^"]+)"', html)
+        if img_match:
+            image = img_match.group(1).replace('&amp;', '&')
+        if not image:
+            img_match = re.search(r'data-src="([^"]*cdn77[^"]*w=420[^"]+)"', html)
+            if img_match:
+                image = img_match.group(1).replace('&amp;', '&')
+
+        if not name:
+            return jsonify({"error": "Could not extract performer name"})
+
+        # Store profile image as webp thumbnail
+        local_image = None
+        if image and model_id:
+            try:
+                import sqlite3 as _sqlite3
+                static_dir = os.path.join(os.path.dirname(__file__), "static", "images")
+                os.makedirs(static_dir, exist_ok=True)
+
+                img_resp = http_requests.get(
+                    image, timeout=10,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                )
+                if img_resp.status_code == 200:
+                    img_data = PIL_Image.open(BytesIO(img_resp.content))
+                    max_w = 300
+                    if img_data.width > max_w:
+                        ratio = max_w / img_data.width
+                        new_h = int(img_data.height * ratio)
+                        img_data = img_data.resize((max_w, new_h), PIL_Image.LANCZOS)
+
+                    fname = f"{model_id}.webp"
+                    local_path = os.path.join(static_dir, fname)
+                    img_data.save(local_path, "WEBP", quality=75)
+                    local_image = f"/performers/static/images/{fname}"
+
+                    conn2 = _sqlite3.connect("performers.db")
+                    conn2.execute(
+                        """CREATE TABLE IF NOT EXISTS performer_images (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            performer_id INTEGER, model_id INTEGER,
+                            image_url TEXT, local_path TEXT,
+                            type TEXT DEFAULT "profile",
+                            added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )"""
+                    )
+                    conn2.execute(
+                        "INSERT OR REPLACE INTO performer_images "
+                        "(performer_id, model_id, image_url, local_path, type) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (None, model_id, image, local_image, "profile"),
+                    )
+                    conn2.commit()
+                    conn2.close()
+            except Exception:
+                pass
+
+        return jsonify({
+            "name": name, "url": profile_url,
+            "model_id": model_id, "scenes": scenes,
+            "nationality": nationality, "image": image,
+            "local_image": local_image,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 
 @app.route("/api/performers/<int:performer_id>/features")
 def get_performer_features(performer_id):
     """Return performer_features + scenes for this performer."""
-    conn = get_db_connection()
-    feat = conn.execute(
-        "SELECT * FROM performer_features WHERE performer_id = ?",
-        (performer_id,),
-    ).fetchone()
-    scenes = conn.execute(
-        "SELECT * FROM performer_scenes WHERE performer_id = ? ORDER BY scene_title",
-        (performer_id,),
-    ).fetchall()
-    # Also get AKA and validated
-    performer = conn.execute(
-        "SELECT name, aka, validated FROM performers WHERE id = ?",
-        (performer_id,),
-    ).fetchone()
-    conn.close()
-    result = {
-        "features": dict(feat) if feat else None,
-        "scenes": [dict(s) for s in scenes],
-        "name": performer["name"] if performer else "",
-        "aka": performer["aka"] if performer else "",
-        "validated": bool(performer["validated"]) if performer else False,
-    }
-    return jsonify(result)
+    feat = repo.get_features(performer_id)
+    scenes = repo.get_scenes(performer_id)
+    performer = repo.get_by_id(performer_id)
+    pname = performer["name"] if performer else ""
+    paka = performer.get("aka", "") if performer else ""
+    pvalidated = bool(performer["validated"]) if performer else False
+
+    # Profile image from refdb
+    profile_image = None
+    if pname:
+        import sqlite3 as _sqlite3
+        conn = _sqlite3.connect("performers.db")
+        img = conn.execute(
+            """SELECT pi.local_path FROM performer_images pi
+                JOIN refdb_models m ON m.id = pi.model_id
+                WHERE LOWER(m.name) = LOWER(?) LIMIT 1""",
+            (pname,),
+        ).fetchone()
+        if img:
+            profile_image = img[0]
+        conn.close()
+
+    return jsonify({
+        "features": feat,
+        "scenes": scenes,
+        "name": pname,
+        "aka": paka,
+        "validated": pvalidated,
+        "profile_image": profile_image,
+    })
 
 
 @app.route("/api/performers/<int:performer_id>/items")
 def get_performer_items(performer_id):
-    conn = get_db_connection()
-
-    # Get sort parameters
     sort_by = request.args.get("sort_by", "added_date")
     sort_order = request.args.get("sort_order", "desc")
+    items = repo.get_items(performer_id)
 
-    # Validate sort parameters to prevent injection
-    valid_columns = ["id", "item_url", "title", "item_date", "hits", "added_date", "source_file"]
-    if sort_by not in valid_columns:
+    # Deduplicate by item_url
+    seen_urls = set()
+    deduped = []
+    for item in items:
+        url = item.get("item_url", "")
+        if url and url in seen_urls:
+            continue
+        if url:
+            seen_urls.add(url)
+        deduped.append(item)
+
+    # Sort in Python since repo returns by added_date desc
+    valid_cols = {"id", "item_url", "title", "item_date", "hits", "added_date", "source_file"}
+    if sort_by not in valid_cols:
         sort_by = "added_date"
-    if sort_order not in ["asc", "desc"]:
-        sort_order = "desc"
+    reverse = sort_order == "desc"
+    deduped.sort(key=lambda x: x.get(sort_by, "") or "", reverse=reverse)
 
-    # Query items for the specific performer with sorting
-    items = conn.execute(
-        f"SELECT * FROM items WHERE performer_id = ? ORDER BY {sort_by} {sort_order}", (performer_id,)
-    ).fetchall()
+    return jsonify(deduped)
 
-    conn.close()
 
-    # Convert to list of dicts for JSON serialization
-    items_list = [dict(item) for item in items]
+@app.route("/api/refdb/performers")
+def get_refdb_performers():
+    """Browse the reference database with filtering."""
+    q = request.args.get("q", "").strip()
+    nationality = request.args.get("nationality", "").strip()
+    tag = request.args.get("tag", "").strip()
+    age_min = request.args.get("age_min", type=int)
+    age_max = request.args.get("age_max", type=int)
+    has_profile = request.args.get("has_profile", "")
+    sort_by = request.args.get("sort_by", "name")
+    sort_order = request.args.get("sort_order", "asc")
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 50, type=int)
 
-    return jsonify(items_list)
+    result = repo.search_refdb(
+        q=q, nationality=nationality, tag=tag,
+        age_min=age_min, age_max=age_max,
+        has_profile=has_profile,
+        sort_by=sort_by, sort_order=sort_order,
+        page=page, per_page=per_page,
+    )
+
+    # Add nationalities for filter dropdown
+    result["nationalities"] = repo.get_refdb_nationalities()
+    return jsonify(result)
+
+
+@app.route("/api/non-performer-tags", methods=["GET"])
+def get_non_performer_tags():
+    tags = repo.get_non_performer_tags()
+    return jsonify(tags)
+
+
+@app.route("/api/non-performer-tags", methods=["POST"])
+def add_non_performer_tag():
+    data = request.get_json()
+    tag = data.get("tag", "").strip()
+    reason = data.get("reason", "").strip()
+    if not tag:
+        return jsonify({"error": "Tag is required"}), 400
+    try:
+        tid = repo.add_non_performer_tag(tag, reason)
+        return jsonify({"id": tid, "tag": tag, "reason": reason}), 201
+    except Exception:
+        return jsonify({"error": "Tag already exists"}), 409
+
+
+@app.route("/api/non-performer-tags/<int:tag_id>", methods=["DELETE"])
+def delete_non_performer_tag(tag_id):
+    repo.delete_non_performer_tag(tag_id)
+    return jsonify({"message": "Tag deleted"})
 
 
 @app.route("/api/refdb")
 def get_refdb_stats():
     """Stats about the reference database (profile scraping progress)."""
-    conn = get_db_connection()
-    total_valid = conn.execute("SELECT COUNT(*) FROM performers WHERE validated = 1").fetchone()[0]
-    scraped = conn.execute("SELECT COUNT(*) FROM performer_features").fetchone()[0]
-    conn.close()
-    return jsonify({
-        "validated": total_valid,
-        "scraped": scraped,
-        "pending": total_valid - scraped,
-    })
+    counts = repo.get_refdb_counts()
+    return jsonify(counts)
 
 
 @app.route("/stats")
@@ -174,433 +549,236 @@ def stats_page():
     return render_template("stats.html")
 
 
+# ── Rating sorting helpers (pure Python, no DB) ──
+
+def _rating_sort_key(rating):
+    """Convert alphabetical rating to a numeric sort key."""
+    if rating is None or rating == "":
+        return float("-inf")
+    try:
+        return float(rating)
+    except ValueError:
+        rating_upper = rating.upper().strip()
+        if rating_upper.startswith("AAA"):
+            return 110.0 if "+" in rating_upper else (108.0 if "-" in rating_upper else 109.0)
+        elif rating_upper.startswith("AA"):
+            return 106.0 if "+" in rating_upper else (104.0 if "-" in rating_upper else 105.0)
+        elif rating_upper.startswith("A"):
+            return 102.0 if "+" in rating_upper else (100.0 if "-" in rating_upper else 101.0)
+        elif rating_upper.startswith("BBB"):
+            return 98.0 if "+" in rating_upper else (96.0 if "-" in rating_upper else 97.0)
+        elif rating_upper.startswith("BB"):
+            return 94.0 if "+" in rating_upper else (92.0 if "-" in rating_upper else 93.0)
+        elif rating_upper.startswith("B"):
+            return 90.0 if "+" in rating_upper else (88.0 if "-" in rating_upper else 89.0)
+        elif rating_upper.startswith("CCC"):
+            return 86.0 if "+" in rating_upper else (84.0 if "-" in rating_upper else 85.0)
+        elif rating_upper.startswith("CC"):
+            return 82.0 if "+" in rating_upper else (80.0 if "-" in rating_upper else 81.0)
+        elif rating_upper.startswith("C"):
+            return 78.0 if "+" in rating_upper else (76.0 if "-" in rating_upper else 77.0)
+        elif rating_upper.startswith("DDD"):
+            return 74.0 if "+" in rating_upper else (72.0 if "-" in rating_upper else 73.0)
+        elif rating_upper.startswith("DD"):
+            return 70.0 if "+" in rating_upper else (68.0 if "-" in rating_upper else 69.0)
+        elif rating_upper.startswith("D"):
+            return 66.0 if "+" in rating_upper else (64.0 if "-" in rating_upper else 65.0)
+        elif rating_upper.startswith("EEE"):
+            return 62.0 if "+" in rating_upper else (60.0 if "-" in rating_upper else 61.0)
+        elif rating_upper.startswith("EE"):
+            return 58.0 if "+" in rating_upper else (56.0 if "-" in rating_upper else 57.0)
+        elif rating_upper.startswith("E"):
+            return 54.0 if "+" in rating_upper else (52.0 if "-" in rating_upper else 53.0)
+        return 40.0
+
+
+def _get_rating_category(rating):
+    """Categorize a rating for distribution display."""
+    if rating is None or rating == "":
+        return "No Rating"
+    try:
+        num = float(rating)
+        if num >= 9: return "9-10 (Numeric)"
+        elif num >= 7: return "7-9 (Numeric)"
+        elif num >= 5: return "5-7 (Numeric)"
+        elif num >= 3: return "3-5 (Numeric)"
+        else: return "0-3 (Numeric)"
+    except ValueError:
+        rating_upper = rating.upper().strip()
+        # Map to hierarchy
+        for prefix, result in [
+            ("AAA+", "AAA+"), ("AAA-", "AAA-"), ("AAA", "AAA"),
+            ("AA+", "AA+"), ("AA-", "AA-"), ("AA", "AA"),
+            ("A+", "A+"), ("A-", "A-"), ("A", "A"),
+            ("BBB+", "BBB+"), ("BBB-", "BBB-"), ("BBB", "BBB"),
+            ("BB+", "BB+"), ("BB-", "BB-"), ("BB", "BB"),
+            ("B+", "B+"), ("B-", "B-"), ("B", "B"),
+            ("CCC+", "CCC+"), ("CCC-", "CCC-"), ("CCC", "CCC"),
+            ("CC+", "CC+"), ("CC-", "CC-"), ("CC", "CC"),
+            ("C+", "C+"), ("C-", "C-"), ("C", "C"),
+            ("DDD+", "DDD+"), ("DDD-", "DDD-"), ("DDD", "DDD"),
+            ("DD+", "DD+"), ("DD-", "DD-"), ("DD", "DD"),
+            ("D+", "D+"), ("D-", "D-"), ("D", "D"),
+            ("EEE+", "EEE+"), ("EEE-", "EEE-"), ("EEE", "EEE"),
+            ("EE+", "EE+"), ("EE-", "EE-"), ("EE", "EE"),
+            ("E+", "E+"), ("E-", "E-"), ("E", "E"),
+        ]:
+            if rating_upper.startswith(prefix):
+                return result
+        return "Other"
+
+
+_RATING_HIERARCHY = {
+    name: i for i, name in enumerate([
+        "AAA+", "AAA", "AAA-", "AA+", "AA", "AA-",
+        "A+", "A", "A-", "BBB+", "BBB", "BBB-",
+        "BB+", "BB", "BB-", "B+", "B", "B-",
+        "CCC+", "CCC", "CCC-", "CC+", "CC", "CC-",
+        "C+", "C", "C-", "DDD+", "DDD", "DDD-",
+        "DD+", "DD", "DD-", "D+", "D", "D-",
+        "EEE+", "EEE", "EEE-", "EE+", "EE", "EE-",
+        "E+", "E", "E-",
+        "9-10 (Numeric)", "7-9 (Numeric)", "5-7 (Numeric)",
+        "3-5 (Numeric)", "0-3 (Numeric)", "Other", "No Rating",
+    ])
+}
+
+
 @app.route("/api/stats")
 def get_stats():
-    conn = get_db_connection()
+    stats = repo.get_stats()
 
-    # Total performers
-    total_performers = conn.execute("SELECT COUNT(*) FROM performers").fetchone()[0]
+    # --- Rating-specific stats (need custom logic) ---
+    rated = repo.get_all_rated()
+    sorted_rated = sorted(
+        rated, key=lambda x: _rating_sort_key(x["rating"]), reverse=True
+    )
+    top_rated = sorted_rated[:10]
+    bottom_rated = sorted_rated[-10:][::-1]
 
-    # Rated performers
-    rated_performers = conn.execute(
-        'SELECT COUNT(*) FROM performers WHERE rating IS NOT NULL AND rating != ""'
-    ).fetchone()[0]
+    # Average rating
+    if sorted_rated:
+        avg_alphabetical = round(
+            sum(_rating_sort_key(p["rating"]) for p in sorted_rated) / len(sorted_rated), 2
+        )
+    else:
+        avg_alphabetical = 0.0
 
-    # Alphabetical rating comparison function - AAA > AA+ > AA > AA- > A > ...
-    def rating_sort_key(rating):
-        if rating is None or rating == "":
-            return float("-inf")  # Lowest priority
-
-        # Handle numeric ratings
-        try:
-            return float(rating)
-        except ValueError:
-            # Handle alphabetical ratings
-            rating_upper = rating.upper().strip()
-
-            # AAA ratings
-            if rating_upper.startswith("AAA"):
-                if "+" in rating_upper:
-                    return 110.0  # AAA+
-                elif "-" in rating_upper:
-                    return 108.0  # AAA-
-                else:
-                    return 109.0  # AAA (standard)
-            # AA ratings
-            elif rating_upper.startswith("AA"):
-                if "+" in rating_upper:
-                    return 106.0  # AA+
-                elif "-" in rating_upper:
-                    return 104.0  # AA-
-                else:
-                    return 105.0  # AA (standard)
-            # A ratings
-            elif rating_upper.startswith("A"):
-                if "+" in rating_upper:
-                    return 102.0  # A+
-                elif "-" in rating_upper:
-                    return 100.0  # A-
-                else:
-                    return 101.0  # A (standard)
-            # BBB ratings
-            elif rating_upper.startswith("BBB"):
-                if "+" in rating_upper:
-                    return 98.0  # BBB+
-                elif "-" in rating_upper:
-                    return 96.0  # BBB-
-                else:
-                    return 97.0  # BBB (standard)
-            # BB ratings
-            elif rating_upper.startswith("BB"):
-                if "+" in rating_upper:
-                    return 94.0  # BB+
-                elif "-" in rating_upper:
-                    return 92.0  # BB-
-                else:
-                    return 93.0  # BB (standard)
-            # B ratings
-            elif rating_upper.startswith("B"):
-                if "+" in rating_upper:
-                    return 90.0  # B+
-                elif "-" in rating_upper:
-                    return 88.0  # B-
-                else:
-                    return 89.0  # B (standard)
-            # CCC ratings
-            elif rating_upper.startswith("CCC"):
-                if "+" in rating_upper:
-                    return 86.0  # CCC+
-                elif "-" in rating_upper:
-                    return 84.0  # CCC-
-                else:
-                    return 85.0  # CCC (standard)
-            # CC ratings
-            elif rating_upper.startswith("CC"):
-                if "+" in rating_upper:
-                    return 82.0  # CC+
-                elif "-" in rating_upper:
-                    return 80.0  # CC-
-                else:
-                    return 81.0  # CC (standard)
-            # C ratings
-            elif rating_upper.startswith("C"):
-                if "+" in rating_upper:
-                    return 78.0  # C+
-                elif "-" in rating_upper:
-                    return 76.0  # C-
-                else:
-                    return 77.0  # C (standard)
-            # DDD ratings
-            elif rating_upper.startswith("DDD"):
-                if "+" in rating_upper:
-                    return 74.0  # DDD+
-                elif "-" in rating_upper:
-                    return 72.0  # DDD-
-                else:
-                    return 73.0  # DDD (standard)
-            # DD ratings
-            elif rating_upper.startswith("DD"):
-                if "+" in rating_upper:
-                    return 70.0  # DD+
-                elif "-" in rating_upper:
-                    return 68.0  # DD-
-                else:
-                    return 69.0  # DD (standard)
-            # D ratings
-            elif rating_upper.startswith("D"):
-                if "+" in rating_upper:
-                    return 66.0  # D+
-                elif "-" in rating_upper:
-                    return 64.0  # D-
-                else:
-                    return 65.0  # D (standard)
-            # EEE ratings
-            elif rating_upper.startswith("EEE"):
-                if "+" in rating_upper:
-                    return 62.0  # EEE+
-                elif "-" in rating_upper:
-                    return 60.0  # EEE-
-                else:
-                    return 61.0  # EEE (standard)
-            # EE ratings
-            elif rating_upper.startswith("EE"):
-                if "+" in rating_upper:
-                    return 58.0  # EE+
-                elif "-" in rating_upper:
-                    return 56.0  # EE-
-                else:
-                    return 57.0  # EE (standard)
-            # E ratings
-            elif rating_upper.startswith("E"):
-                if "+" in rating_upper:
-                    return 54.0  # E+
-                elif "-" in rating_upper:
-                    return 52.0  # E-
-                else:
-                    return 53.0  # E (standard)
-            else:
-                # For any other rating, give it a standardized value
-                return 40.0
-
-    # Calculate average rating for numeric ratings only
+    # Try numeric average
+    import sqlite3
+    conn = sqlite3.connect("performers.db")
     try:
-        avg_rating_result = conn.execute("""
+        avg_numeric = conn.execute("""
             SELECT AVG(CAST(rating AS REAL)) FROM performers
             WHERE rating IS NOT NULL AND rating != ""
-            AND rating GLOB "[0-9]*" OR rating GLOB "[0-9]*.[0-9]*"
+            AND (rating GLOB '[0-9]*' OR rating GLOB '[0-9]*.[0-9]*')
         """).fetchone()[0]
-        avg_numeric_rating = (
-            round(avg_rating_result, 2) if avg_rating_result is not None else 0.0
-        )
+        avg_numeric = round(avg_numeric, 2) if avg_numeric else 0.0
     except:
-        avg_numeric_rating = 0.0
-
-    # Get all performers with ratings for sorting
-    all_rated_performers = conn.execute(
-        'SELECT * FROM performers WHERE rating IS NOT NULL AND rating != ""'
-    ).fetchall()
-    # Sort using our custom function
-    sorted_performers = sorted(
-        [dict(row) for row in all_rated_performers],
-        key=lambda x: rating_sort_key(x["rating"]),
-        reverse=True,
-    )
-
-    # Top 10 rated performers
-    top_rated = sorted_performers[:10]
-
-    # Bottom 10 rated performers
-    bottom_rated = sorted_performers[-10:][::-1]  # Reverse to show ascending order
-
-    # Average rating considering alphabetical ratings (convert to numerical scale for average)
-    if sorted_performers:
-        total_rating_value = sum(
-            [rating_sort_key(performer["rating"]) for performer in sorted_performers]
-        )
-        avg_alphabetical_rating = round(total_rating_value / len(sorted_performers), 2)
-    else:
-        avg_alphabetical_rating = 0.0
-
-    # Performers by rating distribution (for alphabetical ratings)
-    def get_rating_category(rating):
-        if rating is None or rating == "":
-            return "No Rating"
-
-        # Handle numeric ratings
-        try:
-            num_rating = float(rating)
-            if num_rating >= 9:
-                return "9-10 (Numeric)"
-            elif num_rating >= 7:
-                return "7-9 (Numeric)"
-            elif num_rating >= 5:
-                return "5-7 (Numeric)"
-            elif num_rating >= 3:
-                return "3-5 (Numeric)"
-            else:
-                return "0-3 (Numeric)"
-        except ValueError:
-            # Handle alphabetical ratings
-            rating_upper = rating.upper().strip()
-
-            # AAA ratings
-            if rating_upper.startswith("AAA"):
-                if "+" in rating_upper:
-                    return "AAA+"
-                elif "-" in rating_upper:
-                    return "AAA-"
-                else:
-                    return "AAA"
-            # AA ratings
-            elif rating_upper.startswith("AA"):
-                if "+" in rating_upper:
-                    return "AA+"
-                elif "-" in rating_upper:
-                    return "AA-"
-                else:
-                    return "AA"
-            # A ratings
-            elif rating_upper.startswith("A"):
-                if "+" in rating_upper:
-                    return "A+"
-                elif "-" in rating_upper:
-                    return "A-"
-                else:
-                    return "A"
-            # BBB ratings
-            elif rating_upper.startswith("BBB"):
-                if "+" in rating_upper:
-                    return "BBB+"
-                elif "-" in rating_upper:
-                    return "BBB-"
-                else:
-                    return "BBB"
-            # BB ratings
-            elif rating_upper.startswith("BB"):
-                if "+" in rating_upper:
-                    return "BB+"
-                elif "-" in rating_upper:
-                    return "BB-"
-                else:
-                    return "BB"
-            # B ratings
-            elif rating_upper.startswith("B"):
-                if "+" in rating_upper:
-                    return "B+"
-                elif "-" in rating_upper:
-                    return "B-"
-                else:
-                    return "B"
-            # CCC ratings
-            elif rating_upper.startswith("CCC"):
-                if "+" in rating_upper:
-                    return "CCC+"
-                elif "-" in rating_upper:
-                    return "CCC-"
-                else:
-                    return "CCC"
-            # CC ratings
-            elif rating_upper.startswith("CC"):
-                if "+" in rating_upper:
-                    return "CC+"
-                elif "-" in rating_upper:
-                    return "CC-"
-                else:
-                    return "CC"
-            # C ratings
-            elif rating_upper.startswith("C"):
-                if "+" in rating_upper:
-                    return "C+"
-                elif "-" in rating_upper:
-                    return "C-"
-                else:
-                    return "C"
-            # DDD ratings
-            elif rating_upper.startswith("DDD"):
-                if "+" in rating_upper:
-                    return "DDD+"
-                elif "-" in rating_upper:
-                    return "DDD-"
-                else:
-                    return "DDD"
-            # DD ratings
-            elif rating_upper.startswith("DD"):
-                if "+" in rating_upper:
-                    return "DD+"
-                elif "-" in rating_upper:
-                    return "DD-"
-                else:
-                    return "DD"
-            # D ratings
-            elif rating_upper.startswith("D"):
-                if "+" in rating_upper:
-                    return "D+"
-                elif "-" in rating_upper:
-                    return "D-"
-                else:
-                    return "D"
-            # EEE ratings
-            elif rating_upper.startswith("EEE"):
-                if "+" in rating_upper:
-                    return "EEE+"
-                elif "-" in rating_upper:
-                    return "EEE-"
-                else:
-                    return "EEE"
-            # EE ratings
-            elif rating_upper.startswith("EE"):
-                if "+" in rating_upper:
-                    return "EE+"
-                elif "-" in rating_upper:
-                    return "EE-"
-                else:
-                    return "EE"
-            # E ratings
-            elif rating_upper.startswith("E"):
-                if "+" in rating_upper:
-                    return "E+"
-                elif "-" in rating_upper:
-                    return "E-"
-                else:
-                    return "E"
-            else:
-                return "Other"
-
-    # Count performers by category
-    from collections import Counter
-
-    rating_categories = [get_rating_category(p["rating"]) for p in sorted_performers]
-    rating_counts = Counter(rating_categories)
-
-    rating_distribution_list = [
-        {"range": category, "count": count} for category, count in rating_counts.items()
-    ]
-
-    # Sort rating distribution by our predefined hierarchy
-    def rating_hierarchy_key(category):
-        rating_hierarchy = {
-            "AAA+": 1,
-            "AAA": 2,
-            "AAA-": 3,
-            "AA+": 4,
-            "AA": 5,
-            "AA-": 6,
-            "A+": 7,
-            "A": 8,
-            "A-": 9,
-            "BBB+": 10,
-            "BBB": 11,
-            "BBB-": 12,
-            "BB+": 13,
-            "BB": 14,
-            "BB-": 15,
-            "B+": 16,
-            "B": 17,
-            "B-": 18,
-            "CCC+": 19,
-            "CCC": 20,
-            "CCC-": 21,
-            "CC+": 22,
-            "CC": 23,
-            "CC-": 24,
-            "C+": 25,
-            "C": 26,
-            "C-": 27,
-            "DDD+": 28,
-            "DDD": 29,
-            "DDD-": 30,
-            "DD+": 31,
-            "DD": 32,
-            "DD-": 33,
-            "D+": 34,
-            "D": 35,
-            "D-": 36,
-            "EEE+": 37,
-            "EEE": 38,
-            "EEE-": 39,
-            "EE+": 40,
-            "EE": 41,
-            "EE-": 42,
-            "E+": 43,
-            "E": 44,
-            "E-": 45,
-            "9-10 (Numeric)": 46,
-            "7-9 (Numeric)": 47,
-            "5-7 (Numeric)": 48,
-            "3-5 (Numeric)": 49,
-            "0-3 (Numeric)": 50,
-            "Other": 99,
-            "No Rating": 100,
-        }
-        return rating_hierarchy.get(category, 999)
-
-    rating_distribution_list.sort(key=rating_hierarchy_key)
-
-    # Most crawled performers (sorted by crawls, not rating)
-    most_crawled = conn.execute("""
-        SELECT * FROM performers
-        WHERE crawls IS NOT NULL
-        ORDER BY crawls DESC LIMIT 10
-    """).fetchall()
-
+        avg_numeric = 0.0
     conn.close()
 
-    # Convert rows to dictionaries
-    most_crawled_list = [dict(row) for row in most_crawled]
+    # Rating distribution
+    categories = [(_get_rating_category(p["rating"]), p["rating"]) for p in rated]
+    rating_counts = Counter(cat for cat, _ in categories)
+    dist_list = [{"range": cat, "count": cnt} for cat, cnt in rating_counts.items()]
+    dist_list.sort(key=lambda x: _RATING_HIERARCHY.get(x["range"], 999))
 
-    return jsonify(
-        {
-            "total_performers": total_performers,
-            "rated_performers": rated_performers,
-            "avg_rating": avg_alphabetical_rating,  # Using alphabetical average
-            "numeric_avg_rating": avg_numeric_rating,  # Numeric average as backup
-            "top_rated": top_rated,
-            "bottom_rated": bottom_rated,
-            "rating_distribution": rating_distribution_list,
-            "most_crawled": most_crawled_list,
-        }
-    )
+    # Most crawled
+    most_crawled = repo.get_most_crawled(10)
+
+    return jsonify({
+        "total_performers": stats["total_performers"],
+        "total_items": stats["total_items"],
+        "dap_performers": stats["dap_performers"],
+        "total_scenes": stats["total_scenes"],
+        "rating_distribution": dist_list,
+        "rated_performers": len(rated),
+        "avg_rating": avg_alphabetical,
+        "numeric_avg_rating": avg_numeric,
+        "top_rated": top_rated,
+        "bottom_rated": bottom_rated,
+        "most_crawled": most_crawled,
+    })
+
+
+def _compute_refdb_status():
+    """
+    Batch-compute refdb_status for all performers.
+    Stores 'matched', 'fuzzy', or NULL (unmatched) in the performers table.
+    """
+    try:
+        from rapidfuzz import fuzz, process
+    except ImportError:
+        return 0
+
+    import sqlite3
+    conn = sqlite3.connect("performers.db")
+    c = conn.cursor()
+
+    c.execute("SELECT name FROM refdb_models")
+    all_names = [row[0] for row in c.fetchall()]
+    if not all_names:
+        conn.close()
+        return 0
+
+    c.execute("SELECT id, name FROM performers WHERE refdb_status IS NULL")
+    pending = c.fetchall()
+    updated = 0
+    for pid, name in pending:
+        status = None
+        name_lower = name.lower()
+        for n in all_names:
+            if n.lower() == name_lower:
+                status = "matched"
+                break
+        if status is None:
+            result = process.extractOne(name, all_names, scorer=fuzz.token_sort_ratio, score_cutoff=88)
+            if result:
+                status = "fuzzy"
+        if status:
+            c.execute("UPDATE performers SET refdb_status = ? WHERE id = ?", (status, pid))
+            updated += 1
+    conn.commit()
+    conn.close()
+    return updated
+
+
+@app.route("/api/performers/refresh-refdb", methods=["POST"])
+def refresh_refdb_status():
+    count = _compute_refdb_status()
+    if count >= 0:
+        return jsonify({"message": f"Updated {count} performers", "count": count})
+    return jsonify({"error": "RefDB status computation failed"}), 500
+
+
+def _check_refdb_match(name: str) -> str:
+    """Legacy on-the-fly check (used if cached column is empty)."""
+    try:
+        from rapidfuzz import fuzz, process
+    except ImportError:
+        return "unknown"
+    import sqlite3
+    conn = sqlite3.connect("performers.db")
+    c = conn.cursor()
+    c.execute("SELECT name FROM refdb_models")
+    all_names = [row[0] for row in c.fetchall()]
+    conn.close()
+    if not all_names:
+        return "unknown"
+    name_lower = name.lower()
+    for n in all_names:
+        if n.lower() == name_lower:
+            return "matched"
+    result = process.extractOne(name, all_names, scorer=fuzz.token_sort_ratio, score_cutoff=88)
+    if result:
+        return "fuzzy"
+    return "unmatched"
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=8009)
+    create_db("performers.db")
+    updated = _compute_refdb_status()
+    if updated > 0:
+        print(f"  ~ refdb_status computed for {updated} performers")
+    app.run(debug=False, host='0.0.0.0', port=8009)

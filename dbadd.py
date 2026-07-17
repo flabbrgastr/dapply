@@ -10,9 +10,89 @@ This module adds performer data to a SQLite database with:
 
 import csv
 import difflib
+import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+
+def parse_item_date(item_date: str, crawl_ts: int) -> str:
+    """
+    Convert a relative item_date (e.g. "2 months ago", "Yesterday", "15 min")
+    to an absolute ISO timestamp using the crawl timestamp as anchor.
+
+    Returns YYYY-MM-DD HH:MM:SS string, or the current timestamp if parsing fails.
+    """
+    if not item_date or not item_date.strip():
+        return datetime.fromtimestamp(crawl_ts).strftime("%Y-%m-%d %H:%M:%S")
+
+    d = item_date.strip()
+
+    anchor = datetime.fromtimestamp(crawl_ts, tz=timezone.utc)
+
+    # ── Special keywords ──
+    if d == "Yesterday":
+        return (anchor - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    if d == "Last month":
+        m = anchor.month - 1
+        y = anchor.year
+        if m == 0:
+            m = 12
+            y -= 1
+        return anchor.replace(year=y, month=m).strftime("%Y-%m-%d %H:%M:%S")
+    if d == "Last year":
+        return anchor.replace(year=anchor.year - 1).strftime("%Y-%m-%d %H:%M:%S")
+    if d == "Hour ago":
+        return (anchor - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+    # ── "X min" (truncated) or "X min ago" ──
+    m = re.match(r"^(\d+)\s*min", d)
+    if m:
+        return (anchor - timedelta(minutes=int(m.group(1)))).strftime("%Y-%m-%d %H:%M:%S")
+
+    # ── "X hours ago" or "X h" or "X h Y min" ──
+    m = re.match(r"^(\d+)\s*h(?:ours?)?(?:\s+(\d+)\s*min)?", d)
+    if m:
+        hours = int(m.group(1))
+        minutes = int(m.group(2)) if m.group(2) else 0
+        return (anchor - timedelta(hours=hours, minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+
+    # ── "X days ago" ──
+    m = re.match(r"^(\d+)\s+days?\s+ago", d)
+    if m:
+        return (anchor - timedelta(days=int(m.group(1)))).strftime("%Y-%m-%d %H:%M:%S")
+
+    # ── "X weeks ago" ──
+    m = re.match(r"^(\d+)\s+weeks?\s+ago", d)
+    if m:
+        return (anchor - timedelta(weeks=int(m.group(1)))).strftime("%Y-%m-%d %H:%M:%S")
+
+    # ── "X months ago" ──
+    m = re.match(r"^(\d+)\s+months?\s+ago", d)
+    if m:
+        months = int(m.group(1))
+        m_target = anchor.month - months
+        y = anchor.year
+        while m_target <= 0:
+            m_target += 12
+            y -= 1
+        return anchor.replace(year=y, month=m_target).strftime("%Y-%m-%d %H:%M:%S")
+
+    # ── "X years ago" ──
+    m = re.match(r"^(\d+)\s+years?\s+ago", d)
+    if m:
+        return anchor.replace(year=anchor.year - int(m.group(1))).strftime("%Y-%m-%d %H:%M:%S")
+
+    # Fallback: use crawl timestamp
+    return anchor.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _crawl_ts_from_source(source_file: str) -> int:
+    """Extract crawl unix timestamp from a source_file path."""
+    m = re.search(r"crawl_(\d+)", source_file)
+    if m:
+        return int(m.group(1))
+    return int(datetime.now(timezone.utc).timestamp())
 
 
 def create_db(db_path):
@@ -64,6 +144,118 @@ def create_db(db_path):
         cursor.execute("ALTER TABLE performers ADD COLUMN rating TEXT")
     if 'validated' not in columns:
         cursor.execute("ALTER TABLE performers ADD COLUMN validated INTEGER DEFAULT 0")
+    if 'first_seen' not in columns:
+        cursor.execute("ALTER TABLE performers ADD COLUMN first_seen TIMESTAMP")
+    if 'last_seen' not in columns:
+        cursor.execute("ALTER TABLE performers ADD COLUMN last_seen TIMESTAMP")
+    if 'refdb_status' not in columns:
+        cursor.execute("ALTER TABLE performers ADD COLUMN refdb_status TEXT DEFAULT NULL")
+
+    # ── Non-performer tags table (blocklist for sxyprn data-subkey values) ──
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS non_performer_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tag TEXT UNIQUE NOT NULL,
+            reason TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Seed initial values if table is empty
+    cursor.execute("SELECT COUNT(*) FROM non_performer_tags")
+    if cursor.fetchone()[0] == 0:
+        _seed_non_performer_tags(cursor)
+        print("  ~ seeded non_performer_tags table")
+
+def _seed_non_performer_tags(cursor):
+    """Seed the non_performer_tags table with initial blocklist values."""
+    conn = cursor.connection
+    seeds = [
+        # Nationalities / demonyms
+        ("Chilean", "nationality descriptor"),
+        ("Brazilian", "nationality descriptor"),
+        ("Russian", "nationality descriptor"),
+        ("American", "nationality descriptor"),
+        ("British", "nationality descriptor"),
+        ("German", "nationality descriptor"),
+        ("French", "nationality descriptor"),
+        ("Spanish", "nationality descriptor"),
+        ("Italian", "nationality descriptor"),
+        ("Japanese", "nationality descriptor"),
+        ("Chinese", "nationality descriptor"),
+        ("Indian", "nationality descriptor"),
+        ("Mexican", "nationality descriptor"),
+        ("Colombian", "nationality descriptor"),
+        ("Argentinian", "nationality descriptor"),
+        ("Australian", "nationality descriptor"),
+        ("Canadian", "nationality descriptor"),
+        ("Dutch", "nationality descriptor"),
+        ("Polish", "nationality descriptor"),
+        ("Swedish", "nationality descriptor"),
+        ("Norwegian", "nationality descriptor"),
+        ("Danish", "nationality descriptor"),
+        ("Finnish", "nationality descriptor"),
+        ("Hungarian", "nationality descriptor"),
+        ("Romanian", "nationality descriptor"),
+        ("Czech", "nationality descriptor"),
+        ("Ukrainian", "nationality descriptor"),
+        ("Greek", "nationality descriptor"),
+        ("Turkish", "nationality descriptor"),
+        ("Portuguese", "nationality descriptor"),
+        ("Swiss", "nationality descriptor"),
+        ("Austrian", "nationality descriptor"),
+        ("Belgian", "nationality descriptor"),
+        ("Irish", "nationality descriptor"),
+        ("Scottish", "nationality descriptor"),
+        # Descriptive / category tags
+        ("Anal Queen", "descriptive title, not a performer"),
+        ("Anal Queens", "descriptive title, not a performer"),
+        ("Dirty", "descriptive tag"),
+        ("Kinky", "descriptive tag"),
+        ("Slut", "descriptive tag"),
+        ("Sluts", "descriptive tag"),
+        ("Gangbang", "category tag"),
+        ("GangBang", "category tag"),
+        ("Hardcore", "category tag"),
+        ("Interracial", "category tag"),
+        ("Pissing", "category tag"),
+        ("Casting", "category tag"),
+        # Studio / brand names
+        ("Yummy", "studio name (Yummy Estudio)"),
+        ("LegalPorno", "studio name"),
+        ("PornBox", "studio name"),
+        ("PornoBB", "studio name"),
+        # Platform / site names
+        ("OnlyFans", "platform name"),
+        ("BFFS", "site/studio name"),
+    ]
+    cursor.executemany(
+        "INSERT OR IGNORE INTO non_performer_tags (tag, reason) VALUES (?, ?)",
+        seeds
+    )
+
+    # Backfill first_seen / last_seen using computed publish dates from items
+    # (We do this in Python using parse_item_date to handle relative date strings)
+    from collections import defaultdict
+
+    cursor.execute('''
+        SELECT i.performer_id, i.item_date, i.source_file
+        FROM items i
+        ORDER BY i.performer_id
+    ''')
+    rows = cursor.fetchall()
+    perf_dates: dict = defaultdict(list)
+    for pid, item_date, source_file in rows:
+        crawl_ts = _crawl_ts_from_source(source_file or "")
+        pub_date = parse_item_date(item_date, crawl_ts)
+        perf_dates[pid].append(pub_date)
+
+    for pid, dates in perf_dates.items():
+        dates.sort()
+        cursor.execute(
+            "UPDATE performers SET first_seen = ?, last_seen = ? WHERE id = ?",
+            (dates[0], dates[-1], pid),
+        )
 
     conn.commit()
     conn.close()
@@ -169,22 +361,30 @@ def add_performers_from_items(items, db_path="performers.db"):
                     cursor.execute("UPDATE performers SET validated = 1 WHERE id = ?", (performer_id,))
                     perf_by_name[matched_name]["validated"] = True
 
+                # Compute last_seen from the item's publication date
+                crawl_ts = _crawl_ts_from_source(source_file)
+                pub_date = parse_item_date(item_date, crawl_ts)
                 cursor.execute("""
                     UPDATE performers
                     SET urls = ?,
                         last_updated = CURRENT_TIMESTAMP,
+                        last_seen = CASE WHEN ? > last_seen OR last_seen IS NULL THEN ? ELSE last_seen END,
+                        first_seen = CASE WHEN ? < first_seen OR first_seen IS NULL THEN ? ELSE first_seen END,
                         crawls = ?
                     WHERE id = ?
-                """, (updated_urls_str, new_crawl_count, performer_id))
+                """, (updated_urls_str, pub_date, pub_date, pub_date, pub_date, new_crawl_count, performer_id))
 
             else:
                 # New performer
                 is_model = title.startswith("Model: ")
                 val = 1 if is_model else 0
+                # Compute first_seen from the item's publication date
+                crawl_ts = _crawl_ts_from_source(source_file)
+                pub_date = parse_item_date(item_date, crawl_ts)
                 cursor.execute("""
-                    INSERT INTO performers (name, urls, last_updated, crawls, aka, rating, validated)
-                    VALUES (?, ?, CURRENT_TIMESTAMP, 1, '', '', ?)
-                """, (performer, item_url, val))
+                    INSERT INTO performers (name, urls, last_updated, crawls, aka, rating, validated, first_seen, last_seen)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, 1, '', '', ?, ?, ?)
+                """, (performer, item_url, val, pub_date, pub_date))
 
                 performer_id = cursor.lastrowid
                 new_performers_added.append((performer, item_url))
@@ -375,6 +575,200 @@ def dedup_performers(db_path="performers.db", force=False):
         print('Keine Dubletten gefunden.')
 
 
+def resolve_nonames(db_path="performers.db", dry_run=False, limit=None):
+    """
+    NO_NAME-Items durch Scene-URLs + konservatives WRatio-Fuzzy-Matching auflösen.
+
+    Args:
+        dry_run: Nur zeigen, nichts speichern
+        limit: Nur N Items testen
+    """
+    import re
+    from rapidfuzz import fuzz, process
+    from urllib.parse import urlparse
+
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+
+    # Noise-Wörter (nie Teil von Performer-Namen)
+    STOP = {"fuck","fucked","fucking","fucks","gets","takes","with","and","the",
+            "her","his","their","for","after","before","while","by","in","on",
+            "at","to","of","is","are","was","were","been","being","have",
+            "has","had","do","does","did","will","would","could","should",
+            "anal","ass","pussy","cock","dick","cum","sex","hot","big",
+            "first","new","scene","xxx","hd","4k","official","behind",
+            "herself","himself","itself","into","onto","upon","from","about",
+            "teen","teens","milf","bj","bbc","dp","dap","step","only",
+            "more","info","description","others","watch","video","show"}
+
+    # Performernamen laden
+    c.execute("""SELECT id, name FROM performers
+        WHERE name != 'NO_NAME' ORDER BY validated DESC, LENGTH(name) DESC""")
+    known = c.fetchall()
+    known_names = [r[1] for r in known]
+    known_ids = {r[1]: r[0] for r in known}
+
+    # NO_NAME ID
+    c.execute("SELECT id FROM performers WHERE name = 'NO_NAME'")
+    no_name_id = c.fetchone()
+    if not no_name_id:
+        print("Kein NO_NAME-Eintrag.")
+        conn.close()
+        return
+    no_name_id = no_name_id[0]
+
+    def _normalize(s):
+        """Normalize string for matching: lowercase, strip, collapse spaces."""
+        s = s.lower().strip()
+        s = re.sub(r"[^a-z0-9' ]", " ", s)
+        return re.sub(r"\s+", " ", s).strip()
+
+    def _assign(pid, item_id, item_url):
+        if dry_run:
+            return
+        c.execute("UPDATE items SET performer_id = ? WHERE id = ?", (pid, item_id))
+        c.execute("SELECT urls, crawls FROM performers WHERE id = ?", (pid,))
+        row = c.fetchone()
+        if row:
+            urls_str, crawls = row[0] or "", row[1] or 0
+            urls_set = set(urls_str.split("|")) if urls_str else set()
+            if item_url and item_url not in urls_set:
+                urls_set.add(item_url)
+                c.execute("UPDATE performers SET urls = ?, crawls = ? WHERE id = ?",
+                          ("|".join(sorted(urls_set)), crawls + 1, pid))
+
+    def _fuzzy(cand, cutoff=90):
+        """token_sort_ratio-based fuzzy match. Nur ganze Strings, kein Partial."""
+        if len(cand) < 4:
+            return None
+        result = process.extractOne(cand, known_names, scorer=fuzz.token_sort_ratio, score_cutoff=cutoff)
+        if result:
+            return (result[0], result[1])
+        return None
+
+    def _extract_slug_candidates(url):
+        """Extrahiere Bigram-Kandidaten aus URL-Slug."""
+        if not url:
+            return []
+        path = urlparse(url).path.strip("/")
+        slug = path.rsplit("/", 1)[-1] if "/" in path else path
+        slug = re.sub(r"^\d+[_]?", "", slug)
+        words = re.split(r"[_-]", slug)
+        words = [w for w in words if len(w) >= 3 and w.lower() not in STOP]
+        cands = []
+        for i in range(len(words)):
+            if i + 1 < len(words):
+                cands.append(f"{words[i].title()} {words[i+1].title()}")
+        return cands
+
+    def _extract_title_candidates(title):
+        """Extrahiere Bigram-Kandidaten aus Titel (Großbuchstaben-Sequenzen).
+        Nur Bigramme — keine Einzelwörter (vermeidet False Positives).
+        """
+        if not title:
+            return []
+        t = re.sub(r"[^a-zA-Z0-9' -]", " ", title)
+        t = re.sub(r"\s+", " ", t).strip()
+        words = t.split()
+        cands = set()
+        for i, w in enumerate(words):
+            if not w or len(w) < 2 or w.lower() in STOP:
+                continue
+            if w[0].isupper() and i + 1 < len(words) and words[i+1][0].isupper():
+                c2 = f"{w} {words[i+1]}"
+                if len(c2) >= 6 and words[i+1].lower() not in STOP:
+                    cands.add(c2)
+        return list(cands)
+
+    # ── Items laden ──
+    query = "SELECT id, title, item_url FROM items WHERE performer_id = ?"
+    if limit:
+        query += f" LIMIT {limit}"
+    c.execute(query, (no_name_id,))
+    items = c.fetchall()
+    total = len(items)
+    if total == 0:
+        print("Keine NO_NAME-Items.")
+        conn.close()
+        return
+
+    print(f"\n📋 {total} NO_NAME-Items...")
+    if dry_run:
+        print("   (Dry-Run — keine Änderungen)")
+
+    resolved = 0
+    s1 = s2 = s3 = 0
+    review = []  # (score, cand, matched, item_id, title[:60])
+
+    # ── 1. Scene-URL Match ──
+    c.execute("SELECT scene_url, performer_id FROM performer_scenes")
+    scene_map = {u: pid for u, pid in c.fetchall()}
+
+    remaining = []
+    for item_id, title, item_url in items:
+        if item_url and item_url in scene_map:
+            pid = scene_map[item_url]
+            c.execute("SELECT name FROM performers WHERE id = ?", (pid,))
+            pname = c.fetchone()[0] if c.fetchone() else "?"
+            _assign(pid, item_id, item_url)
+            resolved += 1
+            s1 += 1
+        else:
+            remaining.append((item_id, title, item_url))
+    print(f"  ├─ 1/3 Scene-URL (100% sicher): {s1}")
+
+    # ── 2. URL-Slug WRatio ≥ 90 ──
+    still = []
+    for item_id, title, item_url in remaining:
+        cands = _extract_slug_candidates(item_url)
+        matched = None
+        for cand in cands:
+            m = _fuzzy(cand, cutoff=90)
+            if m:
+                matched = (m[0], m[1], cand)
+                break
+        if matched:
+            name, score, cand = matched
+            _assign(known_ids[name], item_id, item_url)
+            resolved += 1
+            s2 += 1
+            if score < 95:
+                review.append((score, cand, name, item_id, (title or "")[:60]))
+        else:
+            still.append((item_id, title, item_url))
+    print(f"  ├─ 2/3 URL-Slug WRatio≥90: {s2}")
+
+    # ── 3. Titel WRatio ≥ 90 ──
+    def _process_title(item_id, title, item_url):
+        cands = _extract_title_candidates(title)
+        for cand in cands:
+            m = _fuzzy(cand, cutoff=90)
+            if m:
+                name, score = m
+                _assign(known_ids[name], item_id, item_url)
+                if score < 95:
+                    review.append((score, cand, name, item_id, (title or "")[:60]))
+                return True
+        return False
+
+    for item_id, title, item_url in still:
+        if _process_title(item_id, title, item_url):
+            s3 += 1
+            resolved += 1
+
+    print(f"  └─ 3/3 Titel WRatio≥90:     {s3}")
+    print(f"\n✅ {resolved}/{total} aufgelöst (Rest: {total - resolved})")
+
+    if review:
+        print(f"\n⚠️  {len(review)} unsichere Matches für Review:")
+        for score, cand, name, item_id, title_snip in sorted(review)[:20]:
+            print(f"  {score:5.1f}  {cand:25s} → {name:25s}  | {title_snip}")
+
+    if not dry_run:
+        conn.commit()
+    conn.close()
+
+
 def main():
     """Main function to run the database add module"""
     import sys
@@ -384,6 +778,16 @@ def main():
     if "--dedup" in sys.argv:
         force = "--force" in sys.argv
         dedup_performers(db_file_path, force=force)
+        return
+
+    if "--resolve-nonames" in sys.argv:
+        dry = "--dry-run" in sys.argv or "-n" in sys.argv
+        lim = None
+        for i, a in enumerate(sys.argv):
+            if a.startswith("--limit=") or a.startswith("-l="):
+                try: lim = int(a.split("=", 1)[1])
+                except: pass
+        resolve_nonames(db_file_path, dry_run=dry, limit=lim)
         return
 
     csv_file_path = "extracted.csv"

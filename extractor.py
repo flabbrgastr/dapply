@@ -66,6 +66,11 @@ def _extract_sxyprn(soup, html_file_path):
         title = re.sub(r"([a-zA-Z])-\s*", r"\1 - ", title)
         title = " ".join(title.split())
 
+        # Denylist: data-subkey values on sxyprn that are clearly NOT performer names.
+        # Reads from the non_performer_tags table in DB (editable via web UI),
+        # with a fallback hardcoded set if the DB is not available.
+        _NON_PERFORMER_SUBKEYS = _load_non_performer_tags()
+
         performers = []
         ps_link_elements = container.find_all(
             class_="ps_link", attrs={"data-subkey": True}
@@ -73,11 +78,17 @@ def _extract_sxyprn(soup, html_file_path):
         for ps_link_elem in ps_link_elements:
             subkey_val = ps_link_elem.get("data-subkey")
             if subkey_val and subkey_val.strip() and subkey_val not in performers:
-                if "+" not in subkey_val or not any(
-                    word in subkey_val.lower()
-                    for word in ["legal", "porno", "only", "fans", "porn", "box"]
+                subkey_stripped = subkey_val.strip()
+                # Skip subkeys that fuzzy-match the denylist (handles slight variations)
+                if _is_blocked_tag(subkey_stripped, _NON_PERFORMER_SUBKEYS):
+                    continue
+                # Original filter: reject "+" subkeys containing certain words
+                if "+" in subkey_stripped and any(
+                    word in subkey_stripped.lower()
+                    for word in ["legal", "porno", "only", "fans", "porn", "box", "milf", "latina", "gangbang", "hardcore"]
                 ):
-                    performers.append(subkey_val.strip())
+                    continue
+                performers.append(subkey_stripped)
 
         item_date = ""
         hits = ""
@@ -240,6 +251,60 @@ def process_html_files(html_dir, output_csv):
         writer.writerows(all_results)
 
     return len(all_results)
+
+
+def _is_blocked_tag(subkey: str, blocklist: set) -> bool:
+    """
+    Check if a data-subkey value matches a blocked tag using fuzzy matching.
+    Uses rapidfuzz token_sort_ratio with cutoff 90 to catch variations
+    like "GangBang" vs "Gangbang", "LegalPorno" vs "Legal Porno", etc.
+    """
+    try:
+        from rapidfuzz import fuzz, process
+        # First check exact match (fast path)
+        if subkey in blocklist:
+            return True
+        # Fuzzy match against all blocked tags
+        result = process.extractOne(
+            subkey, list(blocklist),
+            scorer=fuzz.token_sort_ratio,
+            score_cutoff=90
+        )
+        return result is not None
+    except ImportError:
+        # Fallback to simple case-insensitive exact match
+        return subkey.lower() in {b.lower() for b in blocklist}
+
+
+def _load_non_performer_tags():
+    """
+    Load the non-performer tag blocklist from the database.
+    Falls back to a hardcoded set if the DB query fails.
+    """
+    import sqlite3
+    _FALLBACK = {
+        "Chilean", "Brazilian", "Russian", "American", "British", "German",
+        "French", "Spanish", "Italian", "Japanese", "Chinese", "Indian",
+        "Mexican", "Colombian", "Argentinian", "Australian", "Canadian",
+        "Dutch", "Polish", "Swedish", "Norwegian", "Danish", "Finnish",
+        "Hungarian", "Romanian", "Czech", "Ukrainian", "Greek", "Turkish",
+        "Portuguese", "Swiss", "Austrian", "Belgian", "Irish", "Scottish",
+        "Anal Queen", "Anal Queens", "Dirty", "Kinky", "Slut", "Sluts",
+        "BFFS", "Gangbang", "GangBang", "Hardcore", "Interracial",
+        "Pissing", "Casting", "OnlyFans", "Pornhub",
+        "Yummy", "LegalPorno", "PornBox", "PornoBB",
+    }
+    try:
+        conn = sqlite3.connect("performers.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT tag FROM non_performer_tags")
+        tags = {row[0] for row in cursor.fetchall()}
+        conn.close()
+        if tags:
+            return tags
+    except Exception:
+        pass
+    return _FALLBACK
 
 
 if __name__ == "__main__":

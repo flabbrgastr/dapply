@@ -15,72 +15,25 @@ Nutzung:
 import logging
 import random
 import re
-import sqlite3
 import time
-from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import requests
 from bs4 import BeautifulSoup
 
+from performer_repository import SqlitePerformerRepository
+
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+USER_AGENTS = [
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+]
 DELAY_RANGE = (4.0, 10.0)
 STALE_DAYS = 30  # Re-crawl after 30 days
-
-
-def _ensure_tables(db_path: str):
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS performer_features (
-            performer_id INTEGER PRIMARY KEY,
-            nationality TEXT DEFAULT '',
-            age INTEGER DEFAULT NULL,
-            tags TEXT DEFAULT '',
-            scene_count INTEGER DEFAULT 0,
-            last_scraped TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (performer_id) REFERENCES performers(id)
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS performer_scenes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            performer_id INTEGER,
-            scene_url TEXT,
-            scene_title TEXT,
-            FOREIGN KEY (performer_id) REFERENCES performers(id)
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-
-def get_pending_profiles(db_path: str, stale_days: int = STALE_DAYS) -> List[Dict]:
-    """Get validated performers whose profile is new or stale."""
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    cutoff = (datetime.now() - timedelta(days=stale_days)).isoformat()
-    c.execute("""
-        SELECT p.id, p.name, i.item_url
-        FROM performers p
-        JOIN items i ON i.performer_id = p.id AND i.title LIKE 'Model: %'
-        WHERE p.validated = 1
-          AND i.item_url LIKE '%analvids.com/model/%'
-          AND (
-            p.id NOT IN (SELECT performer_id FROM performer_features)
-            OR (
-              SELECT last_scraped FROM performer_features
-              WHERE performer_id = p.id
-            ) < ?
-          )
-        GROUP BY p.id
-        ORDER BY p.name
-    """, (cutoff,))
-    rows = c.fetchall()
-    conn.close()
-    return [{"id": r[0], "name": r[1], "url": r[2]} for r in rows]
+MAX_RETRIES = 2
 
 
 def _scrape_profile(url: str) -> Optional[Dict]:
@@ -89,23 +42,37 @@ def _scrape_profile(url: str) -> Optional[Dict]:
 
     Returns dict with nationality, age, tags, scenes, or None on error.
     """
-    try:
-        resp = requests.get(
-            url,
-            headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
-            timeout=20,
-        )
-        if resp.status_code != 200:
-            logger.warning(f"HTTP {resp.status_code} for {url}")
+    for attempt in range(MAX_RETRIES):
+        try:
+            ua = random.choice(USER_AGENTS)
+            resp = requests.get(
+                url,
+                headers={"User-Agent": ua, "Accept": "text/html"},
+                timeout=20,
+            )
+            if resp.status_code == 404:
+                logger.warning(f"HTTP 404 (deleted profile) for {url}")
+                return None
+            if resp.status_code != 200:
+                logger.warning(f"HTTP {resp.status_code} for {url} (attempt {attempt+1}/{MAX_RETRIES})")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(random.uniform(2, 5))
+                    continue
+                return None
+            break
+        except requests.RequestException as e:
+            logger.error(f"Request failed for {url}: {e}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(random.uniform(2, 5))
+                continue
             return None
-    except requests.RequestException as e:
-        logger.error(f"Request failed for {url}: {e}")
+    else:
         return None
 
     soup = BeautifulSoup(resp.text, "html.parser")
     body_text = soup.get_text()
 
-    # Nationality + Age from body text (text is continuous, no spaces between fields)
+    # Nationality + Age from body text
     nationality = ""
     age = None
     nat_match = re.search(r'Nationality\s*:\s*([A-Za-z]+?)(?=Age|$)', body_text)
@@ -149,12 +116,20 @@ def _scrape_profile(url: str) -> Optional[Dict]:
             scenes.append({"url": full_url, "title": title})
             seen_urls.add(href)
 
+    # Deduplicate scenes by URL
+    seen_urls = set()
+    unique_scenes = []
+    for s in scenes:
+        if s["url"] not in seen_urls:
+            seen_urls.add(s["url"])
+            unique_scenes.append(s)
+
     return {
         "nationality": nationality,
         "age": age,
         "tags": tags,
-        "scenes": scenes,
-        "scene_count": len(scenes),
+        "scenes": unique_scenes,
+        "scene_count": len(unique_scenes),
         "akas": akas,
     }
 
@@ -172,8 +147,8 @@ def fetch_profiles(
         delay_range: (min, max) random delay
         max_profiles: Limit (None = all)
     """
-    _ensure_tables(db_path)
-    profiles = get_pending_profiles(db_path)
+    repo = SqlitePerformerRepository(db_path)
+    profiles = repo.get_profiles_needing_scrape()
     total = len(profiles)
 
     if total == 0:
@@ -186,8 +161,6 @@ def fetch_profiles(
     print(f"📥 Scrape {len(profiles)}/{total} Performer-Profile...")
     print(f"   (Verzögerung {delay_range[0]}-{delay_range[1]}s zufällig)\n")
 
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
     scraped = 0
     errors = 0
 
@@ -201,20 +174,21 @@ def fetch_profiles(
             time.sleep(random.uniform(*delay_range))
             continue
 
+        # Save features
         tags_str = ", ".join(data["tags"])
-        c.execute("""
-            INSERT OR REPLACE INTO performer_features
-            (performer_id, nationality, age, tags, scene_count, last_scraped)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, (prof["id"], data["nationality"], data["age"], tags_str, data["scene_count"]))
+        repo.upsert_features(
+            prof["id"],
+            nationality=data["nationality"],
+            age=data["age"],
+            tags=tags_str,
+            scene_count=data["scene_count"],
+        )
 
         # Merge AKAs into performers table
         if data["akas"]:
-            # Get existing AKA field
-            c.execute("SELECT aka, name FROM performers WHERE id = ?", (prof["id"],))
-            current = c.fetchone()
-            existing_aka = current[0] or "" if current else ""
-            canonical_name = current[1] if current else prof["name"]
+            current = repo.get_by_id(prof["id"])
+            existing_aka = (current.get("aka") or "") if current else ""
+            canonical_name = current["name"] if current else prof["name"]
 
             new_akas = []
             for aka in data["akas"]:
@@ -223,17 +197,12 @@ def fetch_profiles(
 
             if new_akas:
                 merged = (existing_aka + " | " + " | ".join(new_akas)).strip(" | ")
-                c.execute("UPDATE performers SET aka = ? WHERE id = ?", (merged, prof["id"]))
+                repo.update_aka(prof["id"], merged)
 
         # Save scenes
-        c.execute("DELETE FROM performer_scenes WHERE performer_id = ?", (prof["id"],))
-        for scene in data["scenes"]:
-            c.execute("""
-                INSERT INTO performer_scenes (performer_id, scene_url, scene_title)
-                VALUES (?, ?, ?)
-            """, (prof["id"], scene["url"], scene["title"]))
+        scenes = [(s["url"], s["title"]) for s in data["scenes"]]
+        repo.upsert_scenes(prof["id"], scenes)
 
-        conn.commit()
         scraped += 1
 
         # Compact line
@@ -243,8 +212,6 @@ def fetch_profiles(
 
         if i < len(profiles):
             time.sleep(random.uniform(*delay_range))
-
-    conn.close()
 
     # Summary
     if scraped:
