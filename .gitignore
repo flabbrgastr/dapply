@@ -14,3 +14,6 @@ url_status_tracking.txt
 prompt.config
 urls.yaml
 test/results/
+static/images/
+static/thumbnails/
+*.jsonl

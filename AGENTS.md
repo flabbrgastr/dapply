@@ -74,44 +74,65 @@ conn.close()
 "
 ```
 
-## 🗓️ Current State (2026-07-17 EOD)
+## 🗓️ Wrap-Up (2026-07-17) — NO_NAME Resolution Complete
 
-### Final Metrics
+### Final Database Stats
 
-| Metric | Value |
-|:-------|:-----:|
+| Table | Rows |
+|:------|-----:|
 | **Performers** | 21,527 (was 2,223) |
-| **RefDB models** | 21,268 (was 6,904 — full directory scraped) |
-| **Total items** | 49,111 |
-| **Assigned** | 44,033 (89.7%) |
-| **NO_NAME remaining** | **5,078 (10.3%)** |
-| └ Straight (no match) | 4,049 |
-| └ Gay/trans (thrown away) | 1,029 |
+| **RefDB models** | 21,268 (was 6,904) — full directory scraped |
+| **Items** | 49,111 |
+| **Assigned** | 44,033 (**89.7%**) |
+| **NO_NAME** | **5,078 (10.3%)** — truly unsolvable |
+| **Performer tags** | 21,526 (gender classified) |
+| **Performer features** | 1,111 |
 
-### What was done today
+### Remaining NO_NAME Profile
 
-1. **RefDB sync** (earlier batch of 6,904) → performers from 2,223 to 7,345
-2. **Clean fuzzy matching** with verification layer → +90, filtered 32 descriptive-name performers
-3. **Full directory scrape** (pages 1-659) → refdb from 6,904 to **21,268 models** (all of analvids)
-4. **Sync to performers** → 21,527 total (+14,182 new)
-5. **Re-run exact matching** vs full set → +998 slug, +139 title = +1,137
-6. **Threw away non-straight items** (1,029 gay/trans) — separate problem
-7. **Female-only matching pass** → +5 more
-8. **Total new assignments today: ~2,700**
+| Category | Count | % |
+|:---------|------:|--:|
+| Straight (keywords present) | 2,058 | 40.5% |
+| Trans content | 920 | 18.1% |
+| Gay content | 186 | 3.7% |
+| Lesbian content | 25 | 0.5% |
+| Unknown (no gender keywords) | 1,889 | 37.2% |
+| DAP content | 896 | 17.6% |
+| Portuguese titles | ~1,100 | ~22% |
+| Single-word/hash URL | 557 | 11.0% |
 
-### Next Round Start Point
+### Why They're Unsolvable
 
-- **Remaining 4,049 straight NO_NAME items** are the dead end — amateur content, Portuguese titles, social media usernames. No performer name in title/slug matches any of 21K known performers.
-- **1,029 gay/trans items** thrown away — could be handled separately if needed (would need male/trans performer DB)
-- **`scrape_refdb_full.py`** — new script for directory scraping (don't delete, used for updates)
-- **Content-type tagging** partially implemented (gender by slug) but not stored in DB yet
+Every matching strategy was exhausted against the full 21K performer set:
 
-### Next Opportunities
+1. **Exact slug match** — performer slug in item URL
+2. **Substring slug match** — longest performer slug as word-boundaried substring of item slug
+3. **Title contains full performer name** — exact name with word boundaries
+4. **Fuzzy title match** — distinctive word from name verified standalone in title
+5. **Single-word slug → performer name** — 557 items checked, 0 matches
+6. **Performer name word → title word** — 9,818 name words indexed, 0 matches
+7. **Female-only matching** — filtered to 21,007 female performers, +5 matches
+8. **Non-straight content separated** — 1,029 gay/trans items checked vs all genders
 
-- **Performer content tags**: Store `performer_tags` table with gender + DAP flags. Could use UniInfer to batch-classify performers.
-- **DAP matching**: Items with "dap"/"double anal" in title (916 items). Match against performers confirmed doing DAP scenes.
-- **Portuguese items**: 22% of remaining items are Portuguese (BR). Possible to match via name patterns known in Brazilian industry.
-- **UniInfer proxy**: `amd1.mooo.com:8123`, key `test23@test34`, model `ollama@qwen3.5:0.8b`.
+Result: these items genuinely have **no performer name** in title or URL — amateur content, social media usernames, Portuguese descriptions, hash-based URLs from tube sites.
+
+### What Was Accomplished
+
+- **Full analvids directory scrape**: refdb_models 6,904 → **21,268**
+- **Full performer sync**: 2,223 → **21,527**
+- **~2,700 new assignments** across all matching passes
+- **Performer gender tagging**: stored in `performer_tags` table (21,007 female, 381 male, 138 trans)
+- **Verification layers**: STOP list (250+), descriptive-name filtering (32 excluded), word-boundary checks, prefix verification, slug cross-verify
+- **Repository pattern**: `performer_repository.py` — all DB through interface
+- **RefDB scraper**: `scrape_refdb_full.py` — BeautifulSoup, 36 models/page
+- **Deployment**: `update-dapply.sh` (cron `0 4 * * *`), web UI on port 8009
+
+### Future Opportunities
+
+- **UniInfer batch classification**: `amd1.mooo.com:8123` with `ollama@qwen3.5:0.8b` — could classify remaining items by content type or attempt name extraction
+- **DAP matching**: 896 DAP items could be matched if DAP performer profiles are ever built
+- **Brazilian industry**: ~1,100 Portuguese items could be matched against Brazilian-specific performer databases
+- **Daily maintenance**: cron already running, new items auto-processed through same pipeline
 
 ## Code Style Guidelines
 
