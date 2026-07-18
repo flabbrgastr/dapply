@@ -217,10 +217,31 @@ if __name__ == "__main__":
 ```
 
 ### Testing Guidelines
-- Use `pytest`.
+- Use `pytest` for unit tests.
 - Tests must be independent.
 - Use fixtures and `tempfile` for isolation.
 - Clean up resources.
+
+### LLM Benchmarks (dev branch only)
+- **Never rawdog ad-hoc LLM tests** — always use the benchmark framework or add to it.
+- `test/benchmark/llm_extract.py` — reusable parameterizable benchmark for extract+ground approach.
+- `test/data/generate_golden.py` — regenerate golden sets from DB.
+- Golden sets: `test/data/llm_extract_{positive,negative,mixed}.json`
+- All benchmark work stays on a **dev branch**, not master.
+
+```bash
+# Quick smoke test (10 cases)
+uv run python test/benchmark/llm_extract.py --quick
+
+# Full comparison on 100 cases
+uv run python test/benchmark/llm_extract.py --show 5
+
+# Specific models with output
+uv run python test/benchmark/llm_extract.py \
+  --model "opencode@deepseek-v4-flash-free" \
+  --model "ollama@qwen3.5:0.8b" \
+  --output results.json
+```
 
 ```python
 import pytest
