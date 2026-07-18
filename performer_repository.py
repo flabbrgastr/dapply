@@ -19,6 +19,20 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 
+class _NoOpConn:
+    """Stand-in for a SQLite connection used by test adapters.
+
+    The resolver calls repo._conn().commit() to flush batched writes.
+    The in-memory adapter is already synchronous, so commit is a no-op.
+    """
+
+    def commit(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
 # ── Abstract interface ────────────────────────────────────
 
 
@@ -44,6 +58,10 @@ class PerformerRepository(ABC):
     @abstractmethod
     def get_all(self) -> List[dict]:
         """All performers (name, id, validated)."""
+
+    @abstractmethod
+    def get_refdb_names(self) -> List[str]:
+        """All refdb_models names (separate table, used for fuzzy/hinted matching)."""
 
     @abstractmethod
     def get_no_name(self) -> dict:
@@ -347,6 +365,14 @@ class SqlitePerformerRepository(PerformerRepository):
         ).fetchall()
         conn.close()
         return [dict(r) for r in rows]
+
+    def get_refdb_names(self) -> List[str]:
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT name FROM refdb_models"
+        ).fetchall()
+        conn.close()
+        return [r[0] for r in rows]
 
     def get_no_name(self) -> dict:
         conn = self._conn()
@@ -1016,6 +1042,7 @@ class InMemoryPerformerRepository(PerformerRepository):
         self._items: Dict[int, dict] = {}
         self._scenes: Dict[int, list] = {}  # performer_id -> list of dicts
         self._features: Dict[int, dict] = {}
+        self._refdb_names: List[str] = []
         self._non_performer_tags: Dict[int, dict] = {}
         self._insert_no_name()
 
@@ -1029,6 +1056,10 @@ class InMemoryPerformerRepository(PerformerRepository):
             "validated": 0, "first_seen": None, "last_seen": None,
             "refdb_status": None,
         }
+
+    def _conn(self):
+        """No-op connection stand-in (resolver flushes batches via .commit())."""
+        return _NoOpConn()
 
     def _make_performer(self, name, rating=None, validated=0):
         pid = self._next_pid
@@ -1104,6 +1135,9 @@ class InMemoryPerformerRepository(PerformerRepository):
     def get_all(self) -> List[dict]:
         return [{"id": p["id"], "name": p["name"]}
                 for p in sorted(self._performers.values(), key=lambda x: x["name"])]
+
+    def get_refdb_names(self) -> List[str]:
+        return list(self._refdb_names)
 
     def get_no_name(self) -> dict:
         for p in self._performers.values():
