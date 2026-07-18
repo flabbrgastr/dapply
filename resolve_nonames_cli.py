@@ -22,23 +22,19 @@ import json
 import os
 import sys
 import time
-import sqlite3
 from urllib.parse import urlparse
 from typing import Optional, List, Tuple
 
 from rapidfuzz import fuzz, process
 
 from performer_repository import SqlitePerformerRepository
+from llm_client import LLMClient, UniInferLLMClient, FakeLLMClient
 
 RESULTS_FILE = "noname_results.jsonl"
 CHECKPOINT_FILE = "noname_checkpoint.json"
 BATCH_SIZE = 50
 FAST_BATCH = 5000
 
-# ── API config ─────────────────────────────────────────────
-API_URL = "https://amd1.mooo.com:8123/v1/chat/completions"
-API_KEY = "test23@test34"
-LLM_MODEL = "ollama@qwen3.5:0.8b"
 
 # ── STOP words (never part of a performer name) ────────────
 STOP = {
@@ -228,18 +224,13 @@ def fast_match_item(
 # Use Phase 2 (deep review) to manually add new performers.
 
 
-def load_refdb_slugs() -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+def load_refdb_slugs(repo: SqlitePerformerRepository) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
     """Load refdb_models names as (slug, name) lists for matching."""
-    import sqlite3
-    conn = sqlite3.connect("performers.db")
-    c = conn.cursor()
-    c.execute("SELECT name FROM refdb_models")
-    rows = c.fetchall()
-    conn.close()
+    rows = repo.get_refdb_names()
 
     multi = []
     single = []
-    for (name,) in rows:
+    for name in rows:
         s = re.sub(r'[^a-z0-9_]', '', name.lower().replace(' ', '_'))
         if not s or len(s) < 4:
             continue
@@ -262,6 +253,7 @@ def phase2_hybrid_assign(
     refdb_multi: list,
     refdb_single: list,
     scene_map: dict,
+    llm: LLMClient,
 ) -> int:
     """
     Phase 2: Hybrid matching pipeline.
@@ -273,7 +265,6 @@ def phase2_hybrid_assign(
     Returns number of items assigned.
     """
     from rapidfuzz import fuzz, process
-    import sqlite3
 
     assigned = 0
     stage1 = 0
@@ -301,19 +292,6 @@ def phase2_hybrid_assign(
 
         if match:
             pid = known_ids.get(match)
-            if pid is None:
-                # Create new performer
-                conn = sqlite3.connect("performers.db")
-                c = conn.cursor()
-                c.execute("INSERT OR IGNORE INTO performers (name, last_updated) VALUES (?, CURRENT_TIMESTAMP)", (match,))
-                conn.commit()
-                pid = c.lastrowid
-                if not pid:
-                    pid = c.execute("SELECT id FROM performers WHERE name = ?", (match,)).fetchone()
-                    pid = pid[0] if pid else None
-                conn.close()
-                if pid:
-                    known_ids[match] = pid
             if pid:
                 repo.assign_item(item["id"], pid)
                 repo.add_url(pid, url)
@@ -378,18 +356,6 @@ def phase2_hybrid_assign(
         if verified:
             name, score, source = verified[0]
             pid = known_ids.get(name)
-            if pid is None:
-                conn = sqlite3.connect("performers.db")
-                c = conn.cursor()
-                c.execute("INSERT OR IGNORE INTO performers (name, last_updated) VALUES (?, CURRENT_TIMESTAMP)", (name,))
-                conn.commit()
-                pid = c.lastrowid
-                if not pid:
-                    pid = c.execute("SELECT id FROM performers WHERE name = ?", (name,)).fetchone()
-                    pid = pid[0] if pid else None
-                conn.close()
-                if pid:
-                    known_ids[name] = pid
             if pid:
                 repo.assign_item(item["id"], pid)
                 repo.add_url(pid, url)
@@ -406,24 +372,12 @@ def phase2_hybrid_assign(
             all_cands = unique_cands[:5] if unique_cands else []
             if all_cands:
                 hint_names = [c[0] for c in all_cands]
-                raw = llm_hinted_extract(title, slug_str, hint_names)
+                raw = llm_hinted_extract(title, slug_str, hint_names, llm)
                 if raw:
                     raw_lower = raw.lower()
                     for cand_name in hint_names:
                         if cand_name.lower() in raw_lower:
                             pid = known_ids.get(cand_name)
-                            if pid is None:
-                                conn = sqlite3.connect("performers.db")
-                                c = conn.cursor()
-                                c.execute("INSERT OR IGNORE INTO performers (name, last_updated) VALUES (?, CURRENT_TIMESTAMP)", (cand_name,))
-                                conn.commit()
-                                pid = c.lastrowid
-                                if not pid:
-                                    pid = c.execute("SELECT id FROM performers WHERE name = ?", (cand_name,)).fetchone()
-                                    pid = pid[0] if pid else None
-                                conn.close()
-                                if pid:
-                                    known_ids[cand_name] = pid
                             if pid:
                                 repo.assign_item(item["id"], pid)
                                 repo.add_url(pid, url)
@@ -642,33 +596,8 @@ def fuzzy_match_candidate(cand: str, known_names: List[str], known_ids: dict, cu
 #  LLM helpers
 # ═══════════════════════════════════════════════════════════
 
-def _llm_req(prompt: str, max_tokens: int = 32) -> Optional[str]:
-    """Make single LLM request, return content or None."""
-    import urllib.request
-    import ssl
-    payload = json.dumps({
-        "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0, "max_tokens": max_tokens, "think": False,
-    }).encode()
-    req = urllib.request.Request(
-        API_URL, data=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"},
-        method="POST",
-    )
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    try:
-        resp = urllib.request.urlopen(req, timeout=60, context=ctx)
-        data = json.loads(resp.read().decode())
-        content = data["choices"][0]["message"].get("content", "") or ""
-        return content.strip()
-    except:
-        return None
 
-
-def llm_extract(title: str) -> Optional[str]:
+def llm_extract(title: str, llm: LLMClient) -> Optional[str]:
     """
     Two-prompt extraction: try P1 (explicit+examples) first,
     fall back to XML prompt if P1 echoes title (>3 words).
@@ -684,7 +613,7 @@ def llm_extract(title: str) -> Optional[str]:
         'name: NONE\n\n'
         f'Title: {title[:250]}'
     )
-    r1 = _llm_req(p1, 32)
+    r1 = llm.complete([{"role": "user", "content": p1}], max_tokens=32)
     if r1 is None:
         return None
     r1_clean = r1.strip().strip('.').strip()
@@ -697,7 +626,7 @@ def llm_extract(title: str) -> Optional[str]:
 
     # P1 echoed the title (>3 words) — try XML prompt for better extraction
     p2 = f'<title>{title[:250]}</title>\nExtract <name>performer name</name> or <name>NONE</name>.\nAnswer: <name>'
-    r2 = _llm_req(p2, 32)
+    r2 = llm.complete([{"role": "user", "content": p2}], max_tokens=32)
     if r2 is None:
         return None
     # Extract from XML tags
@@ -712,11 +641,10 @@ def llm_extract(title: str) -> Optional[str]:
     return None
 
 
-def llm_hinted_extract(title: str, slug: str, candidates: List[str]) -> Optional[str]:
+def llm_hinted_extract(title: str, slug: str, candidates: List[str],
+                          llm: LLMClient) -> Optional[str]:
     if not candidates:
         return None
-    import urllib.request
-    import ssl
 
     clean = re.sub(r'\bhttps?://\S+|www\.\S+', '', title, flags=re.I)
     clean = re.sub(r'#\w+', '', clean)
@@ -731,43 +659,23 @@ def llm_hinted_extract(title: str, slug: str, candidates: List[str]) -> Optional
         "Reply with just the number(s) separated by commas, or 0 if none match."
     )
 
-    payload = json.dumps({
-        "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0, "max_tokens": 16, "think": False,
-    }).encode()
-
-    req = urllib.request.Request(
-        API_URL, data=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"},
-        method="POST",
-    )
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-
     try:
-        resp = urllib.request.urlopen(req, timeout=60, context=ctx)
-        data = json.loads(resp.read().decode())
-        content = data["choices"][0]["message"]["content"].strip()
-        nums = re.findall(r'\d+', content)
-        selected = [int(n) for n in nums if n.isdigit()]
-        if 0 in selected:
-            return None
-        names = []
-        for n in selected:
-            if 1 <= n <= len(candidates):
-                names.append(candidates[n-1])
-        return ", ".join(names) if names else None
-    except:
+        content = llm.complete([{"role": "user", "content": prompt}], max_tokens=16)
+    except Exception:
         return None
+    nums = re.findall(r'\d+', content)
+    selected = [int(n) for n in nums if n.isdigit()]
+    if 0 in selected:
+        return None
+    names = []
+    for n in selected:
+        if 1 <= n <= len(candidates):
+            names.append(candidates[n-1])
+    return ", ".join(names) if names else None
 
 
-def llm_try_extract(title: str) -> Optional[str]:
+def llm_try_extract(title: str, llm: LLMClient) -> Optional[str]:
     """Open-ended LLM extraction (weak, used as last resort)."""
-    import urllib.request
-    import ssl
-
     prompt = (
         "Extract the female performer name(s) from this video title. "
         "Names are proper nouns (capitalized first+last name). "
@@ -775,33 +683,17 @@ def llm_try_extract(title: str) -> Optional[str]:
         "Reply with names only, comma-separated. If none, reply NONE.\n\n"
         f"Title: {title[:300]}"
     )
-
-    payload = json.dumps({
-        "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0, "max_tokens": 48, "think": False,
-    }).encode()
-
-    req = urllib.request.Request(
-        API_URL, data=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"},
-        method="POST",
-    )
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-
     try:
-        resp = urllib.request.urlopen(req, timeout=60, context=ctx)
-        data = json.loads(resp.read().decode())
-        content = data["choices"][0]["message"]["content"].strip()
-        if content.upper().strip() in ("NONE", "NONE.", ""):
-            return None
-        if content.lower().strip() in ("none", "none."):
-            return None
-        return content
-    except:
+        content = llm.complete([{"role": "user", "content": prompt}], max_tokens=48)
+    except Exception:
         return None
+    if content is None:
+        return None
+    if content.upper().strip() in ("NONE", "NONE.", ""):
+        return None
+    if content.lower().strip() in ("none", "none."):
+        return None
+    return content
 
 
 # ═══════════════════════════════════════════════════════════
@@ -988,6 +880,157 @@ def show_stats(repo: SqlitePerformerRepository):
 #  Main
 # ═══════════════════════════════════════════════════════════
 
+def run_llm_pass(repo, llm, all_items, known_ids, known_names,
+                refdb_multi, refdb_single) -> int:
+    """Open-ended LLM extraction pass over unmatched items.
+
+    Read-assign only (see ADR-0001): never creates performers.
+    Returns the number of items assigned.
+    """
+    from rapidfuzz import fuzz, process
+    assigned = 0
+    for i, item in enumerate(all_items):
+        url = item.get("item_url", "") or ""
+        title = item.get("title", "") or ""
+
+        if not title or len(title) < 10:
+            save_result(item["id"], None, None, url, title, "skip")
+            continue
+
+        # Open-ended extraction with winning prompt
+        raw = llm_extract(title, llm)
+
+        if raw:
+            name = raw.strip().strip('.').strip()
+            parts = name.split()
+            stop_lower = {w.lower() for w in STOP}
+
+            # Basic sanity: no stop words, looks like a name
+            valid = True
+            has_stop = any(p.lower() in stop_lower for p in parts)
+            
+            # Reject if contains clear stop/descriptive words
+            series_words = {'adventures', 'episode', 'volume', 'chapter', 'part', 'season',
+                            'compilation', 'collection', 'series', 'studio', 'production', 'presents'}
+            has_numbers = any(c.isdigit() for c in name)
+            has_series = any(p.lower() in series_words for p in parts)
+            too_long = len(parts) > 4
+            all_caps = name.isupper() and len(name) > 8
+            
+            if has_stop or has_numbers or has_series or too_long or all_caps:
+                valid = False
+
+            # Accept single-word name ONLY if it fuzzy-matches a known performer
+            if valid and len(parts) == 1:
+                # Check if partial-ratio match to known_names >= 85
+                best = process.extractOne(name, known_names, scorer=fuzz.partial_ratio, score_cutoff=85)
+                accepted = False
+                if best:
+                    # Verify: single word must be a PREFIX of the matched name's first word
+                    # (e.g. "Inga" → "Inga Devil" OK; "Lucia" → "Candie Luciani" NOT OK)
+                    target_first = best[0].split()[0].lower()
+                    if name.lower() == target_first or target_first.startswith(name.lower()):
+                        name = best[0]
+                        parts = name.split()
+                        accepted = True
+                if not accepted:
+                    # Check refdb
+                    for ref_slug, ref_name in refdb_multi:
+                        if name.lower() in ref_name.lower():
+                            target_first = ref_name.split()[0].lower()
+                            if name.lower() == target_first or target_first.startswith(name.lower()):
+                                if len(ref_name.split()) >= 2:
+                                    name = ref_name
+                                    parts = name.split()
+                                    accepted = True
+                                    break
+                    if not accepted:
+                        valid = False  # single word not in any DB
+
+            # Multi-word: reject if too many words (>3) or no capitalized start
+            if valid and len(parts) >= 2:
+                if len(parts) > 3:
+                    valid = False
+                if not parts[0][0].isupper():
+                    valid = False
+
+            # Reject names where ALL words are ≤3 chars (too short for real names)
+            if valid:
+                if parts and all(len(w) <= 3 for w in parts):
+                    valid = False
+
+            # Cross-verify: significant words (≥4 chars) in URL slug
+            if valid and url:
+                slug = slug_from_url(url)
+                sig_words = [p.lower() for p in parts if len(p) >= 4]
+                if sig_words:
+                    count_in_slug = sum(1 for w in sig_words if w in slug)
+                    if len(parts) >= 3:
+                        # 3+ word names: need ≥2 significant words in slug (blocks "Catsuit Cat Performers")
+                        if count_in_slug < 2:
+                            valid = False
+                    else:
+                        # 1-2 word names: need ≥1 significant word in slug
+                        if count_in_slug < 1:
+                            valid = False
+
+            if valid:
+                pid = known_ids.get(name)
+
+                if pid is None:
+                    # Fuzzy match: partial_ratio first (tolerates noise prefixes like "Piss Bille Star" → "Billie Star"),
+                    # then token_sort_ratio for full-name precision
+                    best = process.extractOne(name, known_names, scorer=fuzz.partial_ratio, score_cutoff=85)
+                    if best:
+                        # Verify: single-word must be a PREFIX of the matched name's first word
+                        # (e.g. "Inga" → "Inga Devil" OK; "Lucia" → "Candie Luciani" NOT OK)
+                        orig_words = name.split()
+                        target_words = best[0].split()
+                        valid_match = False
+                        if len(orig_words) == 1:
+                            # Single word: must be prefix of the target's first word
+                            valid_match = target_words[0].lower().startswith(orig_words[0].lower())
+                        else:
+                            # Multi-word: use token_sort_ratio
+                            tsr = fuzz.token_sort_ratio(name, best[0])
+                            valid_match = tsr >= 75
+                        if valid_match:
+                            name = best[0]
+                            pid = known_ids.get(name)
+                    if pid is None:
+                        best = process.extractOne(name, known_names, scorer=fuzz.token_sort_ratio, score_cutoff=85)
+                        if best:
+                            name = best[0]
+                            pid = known_ids.get(name)
+
+                if pid is None:
+                    # Check refdb (read-only match; resolver never creates)
+                    for ref_slug, ref_name in refdb_multi:
+                        if ref_name.lower() == name.lower():
+                            pid = known_ids.get(ref_name)
+                            if pid is not None:
+                                name = ref_name
+                            break
+
+                if pid:
+                    repo.assign_item(item["id"], pid)
+                    repo.add_url(pid, url)
+                    save_result(item["id"], pid, name, url, title, "llm")
+                    assigned += 1
+                else:
+                    save_result(item["id"], None, None, url, title, "llm-fail")
+            else:
+                save_result(item["id"], None, None, url, title, "llm-reject")
+        else:
+            save_result(item["id"], None, None, url, title, "llm-skip")
+
+        if (i + 1) % 100 == 0:
+            repo._conn().commit()
+            print(f"    LLM pass: {i+1}/{len(all_items)} items, {assigned} assigned")
+
+    repo._conn().commit()
+    return assigned
+
 def main():
     import argparse
 
@@ -1014,6 +1057,8 @@ def main():
                         help="Stage 3 only: LLM hinted pass on hard remaining items")
 
     # Common
+    parser.add_argument("--model", type=str, default=None,
+                        help="LLM model id (default: opencode@deepseek-v4-flash-free)")
     parser.add_argument("--batch", type=int, default=0,
                         help="Items to process (default: 0 = all)")
     parser.add_argument("--resume", action="store_true",
@@ -1022,6 +1067,7 @@ def main():
     args = parser.parse_args()
 
     repo = SqlitePerformerRepository()
+    llm = UniInferLLMClient(model=args.model) if args.model else UniInferLLMClient()
 
     # ── Stats only ──
     if args.stats:
@@ -1145,7 +1191,7 @@ def main():
                 unique_hints = [h for h in hint_cands if not (h in seen_hints or seen_hints.add(h))]
                 hint_cands = unique_hints[:5]
                 if hint_cands:
-                    raw = llm_hinted_extract(s.get("title", "") or "", slug, hint_cands)
+                    raw = llm_hinted_extract(s.get("title", "") or "", slug, hint_cands, llm)
                     if raw:
                         raw_lower = raw.lower()
                         found_in_db = [n for n in known_names if n.lower() in raw_lower]
@@ -1188,7 +1234,7 @@ def main():
 
         print(f"📋 Hybrid pipeline on {len(all_items)} items (refdb → fuzzy → LLM)...")
         print("📦 Loading refdb model names...")
-        refdb_multi, refdb_single = load_refdb_slugs()
+        refdb_multi, refdb_single = load_refdb_slugs(repo)
         print(f"   RefDB multi-word: {len(refdb_multi)}, single-word: {len(refdb_single)}")
 
         t0 = time.time()
@@ -1196,6 +1242,7 @@ def main():
             repo, all_items, known_ids, known_names,
             multi_slugs, single_slugs,
             refdb_multi, refdb_single, scene_map,
+            llm,
         )
         elapsed = time.time() - t0
         print(f"\n✅ Phase 3 done: {assigned}/{len(all_items)} assigned in {elapsed:.1f}s")
@@ -1220,178 +1267,11 @@ def main():
 
         print(f"🤖 LLM pass on {len(all_items)} items (open-ended extraction)...")
         print("📦 Loading refdb model names...")
-        refdb_multi, refdb_single = load_refdb_slugs()
+        refdb_multi, refdb_single = load_refdb_slugs(repo)
         t0 = time.time()
         assigned = 0
 
-        for i, item in enumerate(all_items):
-            url = item.get("item_url", "") or ""
-            title = item.get("title", "") or ""
-
-            if not title or len(title) < 10:
-                save_result(item["id"], None, None, url, title, "skip")
-                continue
-
-            # Open-ended extraction with winning prompt
-            raw = llm_extract(title)
-
-            if raw:
-                name = raw.strip().strip('.').strip()
-                parts = name.split()
-                stop_lower = {w.lower() for w in STOP}
-
-                # Basic sanity: no stop words, looks like a name
-                valid = True
-                has_stop = any(p.lower() in stop_lower for p in parts)
-                
-                # Reject if contains clear stop/descriptive words
-                series_words = {'adventures', 'episode', 'volume', 'chapter', 'part', 'season',
-                                'compilation', 'collection', 'series', 'studio', 'production', 'presents'}
-                has_numbers = any(c.isdigit() for c in name)
-                has_series = any(p.lower() in series_words for p in parts)
-                too_long = len(parts) > 4
-                all_caps = name.isupper() and len(name) > 8
-                
-                if has_stop or has_numbers or has_series or too_long or all_caps:
-                    valid = False
-
-                # Accept single-word name ONLY if it fuzzy-matches a known performer
-                if valid and len(parts) == 1:
-                    # Check if partial-ratio match to known_names >= 85
-                    best = process.extractOne(name, known_names, scorer=fuzz.partial_ratio, score_cutoff=85)
-                    accepted = False
-                    if best:
-                        # Verify: single word must be a PREFIX of the matched name's first word
-                        # (e.g. "Inga" → "Inga Devil" OK; "Lucia" → "Candie Luciani" NOT OK)
-                        target_first = best[0].split()[0].lower()
-                        if name.lower() == target_first or target_first.startswith(name.lower()):
-                            name = best[0]
-                            parts = name.split()
-                            accepted = True
-                    if not accepted:
-                        # Check refdb
-                        for ref_slug, ref_name in refdb_multi:
-                            if name.lower() in ref_name.lower():
-                                target_first = ref_name.split()[0].lower()
-                                if name.lower() == target_first or target_first.startswith(name.lower()):
-                                    if len(ref_name.split()) >= 2:
-                                        name = ref_name
-                                        parts = name.split()
-                                        accepted = True
-                                        break
-                        if not accepted:
-                            valid = False  # single word not in any DB
-
-                # Multi-word: reject if too many words (>3) or no capitalized start
-                if valid and len(parts) >= 2:
-                    if len(parts) > 3:
-                        valid = False
-                    if not parts[0][0].isupper():
-                        valid = False
-
-                # Reject names where ALL words are ≤3 chars (too short for real names)
-                if valid:
-                    if parts and all(len(w) <= 3 for w in parts):
-                        valid = False
-
-                # Cross-verify: significant words (≥4 chars) in URL slug
-                if valid and url:
-                    slug = slug_from_url(url)
-                    sig_words = [p.lower() for p in parts if len(p) >= 4]
-                    if sig_words:
-                        count_in_slug = sum(1 for w in sig_words if w in slug)
-                        if len(parts) >= 3:
-                            # 3+ word names: need ≥2 significant words in slug (blocks "Catsuit Cat Performers")
-                            if count_in_slug < 2:
-                                valid = False
-                        else:
-                            # 1-2 word names: need ≥1 significant word in slug
-                            if count_in_slug < 1:
-                                valid = False
-
-                if valid:
-                    pid = known_ids.get(name)
-
-                    if pid is None:
-                        # Fuzzy match: partial_ratio first (tolerates noise prefixes like "Piss Bille Star" → "Billie Star"),
-                        # then token_sort_ratio for full-name precision
-                        best = process.extractOne(name, known_names, scorer=fuzz.partial_ratio, score_cutoff=85)
-                        if best:
-                            # Verify: single-word must be a PREFIX of the matched name's first word
-                            # (e.g. "Inga" → "Inga Devil" OK; "Lucia" → "Candie Luciani" NOT OK)
-                            orig_words = name.split()
-                            target_words = best[0].split()
-                            valid_match = False
-                            if len(orig_words) == 1:
-                                # Single word: must be prefix of the target's first word
-                                valid_match = target_words[0].lower().startswith(orig_words[0].lower())
-                            else:
-                                # Multi-word: use token_sort_ratio
-                                tsr = fuzz.token_sort_ratio(name, best[0])
-                                valid_match = tsr >= 75
-                            if valid_match:
-                                name = best[0]
-                                pid = known_ids.get(name)
-                        if pid is None:
-                            best = process.extractOne(name, known_names, scorer=fuzz.token_sort_ratio, score_cutoff=85)
-                            if best:
-                                name = best[0]
-                                pid = known_ids.get(name)
-
-                    if pid is None:
-                        # Check refdb
-                        for ref_slug, ref_name in refdb_multi:
-                            if ref_name.lower() == name.lower():
-                                pid = known_ids.get(ref_name)
-                                if pid is None:
-                                    conn = sqlite3.connect("performers.db")
-                                    c = conn.cursor()
-                                    c.execute("INSERT OR IGNORE INTO performers (name, last_updated) VALUES (?, CURRENT_TIMESTAMP)", (ref_name,))
-                                    conn.commit()
-                                    pid = c.lastrowid
-                                    conn.close()
-                                name = ref_name
-                                break
-
-                    if pid is None:
-                        # Reject if ALL words are common noise words (descriptive phrase, not a name)
-                        noise_words = {w.lower() for w in COMMON_NOISE}
-                        if parts:
-                            word_lower = [w.lower() for w in parts]
-                            # Check: all words are noise words (catches "Pink Girl", "Curious Goddess" etc.)
-                            all_noise = all(w in noise_words for w in word_lower)
-                            # Also check: has very short word (1-2 chars) and all others are noise (catches "Bi Encouragement")
-                            has_short = any(len(w) <= 2 for w in word_lower)
-                            other_noise = all(w in noise_words for w in word_lower if len(w) > 2)
-                            if all_noise or (has_short and len(word_lower) >= 2 and other_noise):
-                                save_result(item["id"], None, None, url, title, "llm-reject")
-                                continue
-                        # Create entirely new performer
-                        conn = sqlite3.connect("performers.db")
-                        c = conn.cursor()
-                        c.execute("INSERT INTO performers (name, last_updated) VALUES (?, CURRENT_TIMESTAMP)", (name,))
-                        conn.commit()
-                        pid = c.lastrowid
-                        conn.close()
-                        known_ids[name] = pid
-
-                    if pid:
-                        repo.assign_item(item["id"], pid)
-                        repo.add_url(pid, url)
-                        save_result(item["id"], pid, name, url, title, "llm")
-                        assigned += 1
-                    else:
-                        save_result(item["id"], None, None, url, title, "llm-fail")
-                else:
-                    save_result(item["id"], None, None, url, title, "llm-reject")
-            else:
-                save_result(item["id"], None, None, url, title, "llm-skip")
-
-            if (i + 1) % 100 == 0:
-                repo._conn().commit()
-                print(f"    LLM pass: {i+1}/{len(all_items)} items, {assigned} assigned")
-
-        repo._conn().commit()
+        assigned = run_llm_pass(repo, llm, all_items, known_ids, known_names, refdb_multi, refdb_single)
         elapsed = time.time() - t0
         print(f"\n🤖 LLM pass done: {assigned}/{len(all_items)} assigned in {elapsed:.1f}s")
         return
