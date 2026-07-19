@@ -16,13 +16,15 @@ global mutable state:
 Run with:  uv run pytest test/unit/test_resolver_offline.py -v
 """
 
+import sqlite3
+from typing import Optional
 from unittest import mock
 
 import pytest
 
 import resolve_nonames_cli as R
 from llm_client import FakeLLMClient
-from performer_repository import InMemoryPerformerRepository
+from performer_repository import InMemoryPerformerRepository, SqlitePerformerRepository
 
 
 # ── Helpers ────────────────────────────────────────────────
@@ -174,3 +176,137 @@ def test_run_llm_pass_known_name_matches_no_creation():
     assert assigned == 1
     assert len(repo._performers) == 2  # unchanged (matched existing)
     assert results[0]["performer_id"] == known_ids["Mia Kalani"]
+
+
+# ── Real-DB helpers (ADR enforcement + apply round-trip) ──
+
+def _count_performers(db_path: str) -> int:
+    conn = sqlite3.connect(db_path)
+    n = conn.execute("SELECT COUNT(*) FROM performers").fetchone()[0]
+    conn.close()
+    return n
+
+
+def _item_performer(db_path: str, item_id: int) -> Optional[int]:
+    conn = sqlite3.connect(db_path)
+    row = conn.execute("SELECT performer_id FROM items WHERE id = ?", (item_id,)).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def test_run_llm_pass_adds_no_performer_to_real_db(tmp_path):
+    """ADR-0001 enforced via the REAL write path (not just the in-memory dict).
+
+    The deleted creation code wrote to the real ``performers.db`` via raw
+    ``sqlite3.connect``, bypassing the in-memory repo. A reintroduced raw
+    INSERT adds a row to the real table; this test catches that regression
+    by counting rows in a temp SQLite DB.
+    """
+    db = str(tmp_path / "perf.db")
+    repo = SqlitePerformerRepository(db)
+    pid = repo.insert("Mia Kalani")
+    known_ids = {"Mia Kalani": pid}
+    known_names = ["Mia Kalani"]
+    item = {
+        "id": 9001,
+        "item_url": "https://sxyprn.com/post/completely_unknown_name_video",
+        "title": "Completely Unknown Name hot scene",
+    }
+    before = _count_performers(db)
+    R.run_llm_pass(repo, FakeLLMClient(["Completely Unknown Name"]),
+                   [item], known_ids, known_names, [], [])
+    assert _count_performers(db) == before  # no row written to performers table
+
+
+def test_run_llm_pass_persists_via_save_and_apply(tmp_path):
+    """Real save_result -> load_results -> apply_all_results round-trip.
+
+    Exercises the actual JSONL output and the apply step against a real
+    SQLite repo (the production data path the other tests mock away).
+    """
+    db = str(tmp_path / "perf.db")
+    repo = SqlitePerformerRepository(db)
+    pid = repo.insert("Mia Kalani")
+    # Insert an item directly (dbadd.create_db's items schema lacks the
+    # thumbnail_url column insert_item expects; irrelevant to this test).
+    conn = repo._conn()
+    conn.execute(
+        "INSERT INTO items (item_url, title, performer_id) VALUES (?, ?, NULL)",
+        ("https://sxyprn.com/post/mia_kalani_video", "Mia Kalani hot scene"),
+    )
+    item_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+    before = _count_performers(db)
+    known_ids = {"Mia Kalani": pid}
+    known_names = ["Mia Kalani"]
+    results_file = str(tmp_path / "results.jsonl")
+    orig = R.RESULTS_FILE
+    R.RESULTS_FILE = results_file
+    try:
+        R.run_llm_pass(
+            repo, FakeLLMClient(["Mia Kalani"]),
+            [{"id": item_id, "item_url": "https://sxyprn.com/post/mia_kalani_video",
+              "title": "Mia Kalani hot scene"}],
+            known_ids, known_names, [], [],
+        )
+        # The resolver wrote a real, parseable JSONL
+        saved = R.load_results()
+        assert len(saved) == 1
+        assert saved[0]["performer_id"] == pid
+        # Apply step consumes it against the real repo
+        R.apply_all_results(repo)
+    finally:
+        R.RESULTS_FILE = orig
+    # Item actually assigned in the real DB, no performer created
+    assert _item_performer(db, item_id) == pid
+    assert _count_performers(db) == before  # NO_NAME not seeded; only Mia Kalani
+
+
+def test_fast_match_item_slug_substring():
+    """Deterministic Phase-1 slug matching (the production workhorse)."""
+    multi = [("anna_de_ville", 1, "Anna De Ville")]
+    single = []
+    hit = R.fast_match_item("https://sxyprn.com/post/anna_de_ville_hot", "t", multi, single)
+    assert hit == ("Anna De Ville", 1, 100)
+    assert R.fast_match_item("https://sxyprn.com/post/random", "t", multi, single) is None
+
+
+def test_phase1_fast_auto_assign_no_creation():
+    """Deterministic Phase-1 matching assigns via the repo port, never creates."""
+    repo = InMemoryPerformerRepository()
+    pid = repo.insert("mia kalani")
+    known_ids = {"mia kalani": pid}
+    multi = [("mia_kalani", pid, "mia kalani")]
+    item = {"id": 1, "item_url": "https://sxyprn.com/post/mia_kalani_video", "title": "x"}
+    results, save = _collector()
+    with mock.patch.object(R, "save_result", save):
+        assigned = R.phase1_fast_auto_assign(repo, [item], known_ids, multi, [], {})
+    assert assigned == 1
+    assert results[0]["performer_id"] == pid
+    assert len(repo._performers) == 2  # NO_NAME + mia kalani (no creation)
+
+
+def test_match_item_slug_and_no_match():
+    multi = [("anna_de_ville", 7, "Anna De Ville")]
+    single = []
+    known_names = ["Anna De Ville"]
+    known_ids = {"Anna De Ville": 7}
+    res = R.match_item("https://x/post/anna_de_ville_hot", "title here", multi, single, known_names, known_ids)
+    assert res and res[0][0] == "Anna De Ville"
+    assert R.match_item("https://x/post/random", "title here", multi, single, known_names, known_ids) == []
+
+
+def test_llm_extract_prompt_contains_title():
+    """#5: the resolver builds the right prompt (not just any response)."""
+    fake = FakeLLMClient(["Anna De Ville"])
+    R.llm_extract("Anna De Ville solo anal", fake)
+    content = fake.calls[-1]["messages"][0]["content"]
+    assert "Anna De Ville solo anal" in content
+
+
+def test_llm_hinted_prompt_contains_candidates():
+    fake = FakeLLMClient(["1"])
+    R.llm_hinted_extract("some title", "slug", ["Anna De Ville", "Mia Kai"], fake)
+    content = fake.calls[-1]["messages"][0]["content"]
+    assert "Anna De Ville" in content and "Mia Kai" in content
