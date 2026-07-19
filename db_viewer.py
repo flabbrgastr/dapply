@@ -2,7 +2,7 @@
 Web UI for browsing and editing the performer database.
 
 Flask app — thin routes only. All data access / external scraping lives in
-``viewer_queries.py``; pure presentation helpers live in ``viewer_rendering.py``.
+``viewer_queries.py``; rating logic lives in the ``Rating`` domain module (``rating.py``).
 
 The app is built by :func:`create_app`, which injects the repository port.
 This makes the webapp testable without the production database: a test can

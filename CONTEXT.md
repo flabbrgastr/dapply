@@ -32,8 +32,10 @@ assumes these terms exist.
 - **Crawl** — one scrape run. The `crawls` counter increments per *new* URL
   found for a performer (re-seen URLs don't count).
 - **Rating** — a quality score. Either an **alphabetical tier** (`AAA`…`E`, each
-  with optional `+`/`-`) or a **numeric** value (`0`–`10`). The stats view turns
-  ratings into a sort key and a distribution; see `viewer_rendering.py`.
+  with optional `+`/`-`) or a **numeric** value (`0`–`10`). Modeled as the
+  `Rating` value object in `rating.py` (parse + sort key + category +
+  comparison); `build_stats_payload` sorts/categorizes through it. The legacy
+  `viewer_rendering` helpers were folded into this module.
 - **RefDB status** — per-performer match against `refdb_models`: `matched`
   (exact name) or `fuzzy` (near, via rapidfuzz). Computed in batch.
 - **DAP** — "double anal" tag on `performer_features`; used for DAP counts.

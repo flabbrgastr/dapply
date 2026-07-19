@@ -10,7 +10,7 @@ import db_viewer
 from performer_repository import InMemoryPerformerRepository, SqlitePerformerRepository
 from analvids_source import FakeAnalvidsSource
 import viewer_queries
-import viewer_rendering
+import rating
 
 
 # Every (method, rule) the live web UI must expose. The split must not drop
@@ -141,21 +141,21 @@ def test_query_layer_is_importable_without_flask_running():
 
 def test_rating_sort_key_ordering():
     # Higher tier -> higher numeric key; numeric ratings sort numerically.
-    assert viewer_rendering._rating_sort_key("AAA") > viewer_rendering._rating_sort_key("BBB")
-    assert viewer_rendering._rating_sort_key("BBB") > viewer_rendering._rating_sort_key("C")
-    assert viewer_rendering._rating_sort_key("9.5") == 9.5
-    assert viewer_rendering._rating_sort_key(None) == float("-inf")
-    assert viewer_rendering._rating_sort_key("") == float("-inf")
+    assert rating.rating_sort_key("AAA") > rating.rating_sort_key("BBB")
+    assert rating.rating_sort_key("BBB") > rating.rating_sort_key("C")
+    assert rating.rating_sort_key("9.5") == 9.5
+    assert rating.rating_sort_key(None) == float("-inf")
+    assert rating.rating_sort_key("") == float("-inf")
 
 
 def test_rating_category():
-    assert viewer_rendering._get_rating_category("AAA") == "AAA"
-    assert viewer_rendering._get_rating_category("B+") == "B+"
-    assert viewer_rendering._get_rating_category("9.5") == "9-10 (Numeric)"
-    assert viewer_rendering._get_rating_category("") == "No Rating"
+    assert rating.rating_category("AAA") == "AAA"
+    assert rating.rating_category("B+") == "B+"
+    assert rating.rating_category("9.5") == "9-10 (Numeric)"
+    assert rating.rating_category("") == "No Rating"
 
 
 def test_rating_hierarchy_ordering():
     # Lower index == higher tier.
-    h = viewer_rendering._RATING_HIERARCHY
+    h = rating.RATING_HIERARCHY
     assert h["AAA"] < h["A"] < h["BBB"] < h["C"] < h["No Rating"]
