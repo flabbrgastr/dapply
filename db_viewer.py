@@ -19,36 +19,40 @@ from flask import Flask, jsonify, render_template, request
 
 from dbadd import create_db
 from performer_repository import PerformerRepository, SqlitePerformerRepository
-from viewer_queries import (
-    build_stats_payload,
-    fetch_analvids_profile,
-    search_analvids,
-)
+from viewer_queries import build_stats_payload
+from analvids_source import AnalvidsSource, ScrapingAnalvidsSource
 
 
-def create_app(repo: Optional[PerformerRepository] = None) -> Flask:
+def create_app(repo: Optional[PerformerRepository] = None,
+                analvids: Optional[AnalvidsSource] = None) -> Flask:
     """
-    Build the web UI Flask app, injecting the repository port.
+    Build the web UI Flask app, injecting the repository and analvids ports.
 
     Args:
         repo: The repository to use. Defaults to ``SqlitePerformerRepository()``
             (the production database). Inject a fake (e.g.
             ``InMemoryPerformerRepository``) for tests.
+        analvids: The analvids.com lookup source. Defaults to
+            ``ScrapingAnalvidsSource()`` (production, network). Inject
+            ``FakeAnalvidsSource`` for tests.
 
     Returns:
-        A configured Flask app. The injected port is also available on
-        ``app.config["REPO"]``.
+        A configured Flask app. The injected ports are also available on
+        ``app.config["REPO"]`` / ``app.config["ANALVIDS"]``.
     """
     if repo is None:
         repo = SqlitePerformerRepository()
+    if analvids is None:
+        analvids = ScrapingAnalvidsSource()
 
     app = Flask(
         __name__,
         static_folder=os.path.join(os.path.dirname(__file__), "static"),
         static_url_path="/static",
     )
-    # Expose the injected port for __main__ and external access.
+    # Expose the injected ports for __main__ and external access.
     app.config["REPO"] = repo
+    app.config["ANALVIDS"] = analvids
 
     @app.route("/")
     def index():
@@ -211,13 +215,22 @@ def create_app(repo: Optional[PerformerRepository] = None) -> Flask:
         q = request.args.get("q", "").strip()
         if not q:
             return jsonify({"results": []})
-        return jsonify(search_analvids(q))
+        return jsonify(analvids.search(q))
 
     @app.route("/api/performers/lookup-analvids-url")
     def lookup_analvids_url():
         """Fetch an analvids model profile by URL and extract performer info."""
         raw = request.args.get("url", "").strip()
-        return jsonify(fetch_analvids_profile(raw, repo))
+        profile = analvids.fetch_profile(raw)
+        if "error" in profile:
+            return jsonify(profile)
+        # Persist the cached image through the repository port (the only DB
+        # writer); the source itself never touches the database.
+        if profile.get("local_image") and profile.get("model_id"):
+            repo.save_profile_image(
+                profile["model_id"], profile.get("image"), profile["local_image"]
+            )
+        return jsonify(profile)
 
     @app.route("/api/performers/<int:performer_id>/features")
     def get_performer_features(performer_id):

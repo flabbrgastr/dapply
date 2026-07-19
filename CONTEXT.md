@@ -52,3 +52,9 @@ assumes these terms exist.
 - **ADR-0001** — the resolver must **not** create performers; performer
   creation is owned by the `dbadd` ingestion path and the web UI's confirm
   action. The repository port is the only writer.
+- **AnalvidsSource** — the external analvids.com lookup port
+  (`analvids_source.py`). `ScrapingAnalvidsSource` (HTTP + PIL) is the
+  production adapter; `FakeAnalvidsSource` is the test double. It is **pure
+  with respect to the database** (reads/writes only the cached image on the
+  filesystem); the calling route composes it with the repository port. Both
+  ports are injected into the webapp via `db_viewer.create_app(repo, analvids)`.

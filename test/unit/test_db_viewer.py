@@ -8,6 +8,7 @@ import pytest
 
 import db_viewer
 from performer_repository import InMemoryPerformerRepository, SqlitePerformerRepository
+from analvids_source import FakeAnalvidsSource
 import viewer_queries
 import viewer_rendering
 
@@ -96,10 +97,46 @@ def test_index_route_renders():
     assert resp.status_code == 200
 
 
+def test_lookup_analvids_returns_canned_results():
+    # Candidate B: the analvids source is injected, so the lookup route is
+    # exercisable without network.
+    fake = FakeAnalvidsSource(
+        search_results=[{"name": "Canned Model", "url": "http://x", "model_id": 7}]
+    )
+    client = db_viewer.create_app(InMemoryPerformerRepository(), analvids=fake).test_client()
+    resp = client.get("/api/performers/lookup-analvids?q=foo")
+    assert resp.status_code == 200
+    results = resp.get_json()["results"]
+    assert results[0]["name"] == "Canned Model"
+    assert fake.search_calls == ["foo"]
+
+
+def test_lookup_analvids_url_persists_cached_image():
+    # The route composes the source with the repo: the cached image returned
+    # by the source is persisted through the repository port.
+    repo = InMemoryPerformerRepository()
+    repo.add_to_refdb("Canned Model")  # refdb model id 1
+    fake = FakeAnalvidsSource(
+        profile={
+            "name": "Canned Model", "url": "http://x", "model_id": 1,
+            "scenes": 3, "nationality": "US", "image": "http://img",
+            "local_image": "/performers/static/images/1.webp",
+        }
+    )
+    client = db_viewer.create_app(repo, analvids=fake).test_client()
+    resp = client.get("/api/performers/lookup-analvids-url?url=http://x")
+    assert resp.status_code == 200
+    assert resp.get_json()["name"] == "Canned Model"
+    assert repo.get_profile_image("Canned Model") == "/performers/static/images/1.webp"
+
+
 def test_query_layer_is_importable_without_flask_running():
-    # These are plain functions; importing must not require a Flask context.
-    for name in ("search_analvids", "fetch_analvids_profile", "build_stats_payload"):
-        assert hasattr(viewer_queries, name)
+    # viewer_queries owns only the stats payload now; the analvids lookups
+    # live behind the AnalvidsSource port.
+    assert hasattr(viewer_queries, "build_stats_payload")
+    import analvids_source
+    assert hasattr(analvids_source, "ScrapingAnalvidsSource")
+    assert hasattr(analvids_source, "FakeAnalvidsSource")
 
 
 def test_rating_sort_key_ordering():
