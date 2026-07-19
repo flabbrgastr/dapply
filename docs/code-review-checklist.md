@@ -15,26 +15,28 @@ Generated from a repo review. Track progress by ticking boxes.
       `SystemExit` still propagate).
 - [x] **4. Add a `dbadd` ingest test** — parse a sample row/HTML → assert
       performer/item rows. Covers the riskiest untested path.
-- [ ] **5. Split `db_viewer.py`** — routes / query layer / rendering (currently
-      784 LOC, 27 flat defs, 0 methods).
+- [x] **5. Split `db_viewer.py`** — now 3 layers: `db_viewer.py` (thin
+      Flask routes), `viewer_queries.py` (DB/scraping/stats logic), `viewer_rendering.py`
+      (pure rating helpers). All 24 routes preserved; contract test added.
 
 ## Tracked findings (no immediate action)
 
-- [ ] Committed mutable artifact: `noname_results.jsonl` (fixed by #1).
+- [x] Committed mutable artifact: `noname_results.jsonl` (fixed by #1).
 - [x] `dbadd.parse_item_date` mixed local time (empty branch) and UTC (other
       branches) in the same `item_date` column — fixed in #4.
-- [ ] `STOP`/`COMMON_NOISE` duplicated across modules (fixed by #2).
-- [ ] `USER_AGENTS` defined in 3 files (fixed by #2).
+- [x] `STOP`/`COMMON_NOISE` duplicated across modules (fixed by #2).
+- [x] `USER_AGENTS` defined in 3 files (fixed by #2).
 - [ ] God modules: `resolve_nonames_cli.py` (1284), `performer_repository.py`
-      (1484), `db_viewer.py` (784), `orchestator.py` (754), `scraper.py` (646).
-- [ ] 3 bare `except:` + 22 `except Exception` (bare ones fixed by #3).
+      (1484) remain; `db_viewer.py` split into routes/queries/rendering (#5).
+- [x] 3 bare `except:` (fixed by #3); 22 `except Exception` remain.
 - [ ] 221 `print()` calls, no `logging` strategy (cron path).
-- [ ] Test coverage gaps: `dbadd`, `db_viewer`, `orchestator` core, thumb scripts.
+- [ ] Test coverage gaps: `orchestator` core, thumb scripts (`dbadd` +
+      `db_viewer` now covered).
 - [ ] Dead code: `insert_item` has no callers; `_bench_dedup.py` stray;
       `refdb.py` vs `scrape_refdb_full.py` overlap.
 - [ ] Inconsistent typing on resolver functions (`phase2_hybrid_assign`,
       `run_llm_pass`, `match_item` lost annotations).
-- [ ] `db_viewer.py` flat layout (27 defs, 0 methods).
+- [x] `db_viewer.py` flat layout (27 defs, 0 methods) — split in #5.
 
 ## What's good (keep)
 
