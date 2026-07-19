@@ -13,7 +13,7 @@ Generated from a repo review. Track progress by ticking boxes.
 - [x] **3. Kill the 3 bare `except:`** — `dbadd.py:790`, `db_viewer.py:677`,
       `scrape_refdb_full.py:256` → `except Exception:` (so `KeyboardInterrupt` /
       `SystemExit` still propagate).
-- [ ] **4. Add a `dbadd` ingest test** — parse a sample row/HTML → assert
+- [x] **4. Add a `dbadd` ingest test** — parse a sample row/HTML → assert
       performer/item rows. Covers the riskiest untested path.
 - [ ] **5. Split `db_viewer.py`** — routes / query layer / rendering (currently
       784 LOC, 27 flat defs, 0 methods).
@@ -21,6 +21,8 @@ Generated from a repo review. Track progress by ticking boxes.
 ## Tracked findings (no immediate action)
 
 - [ ] Committed mutable artifact: `noname_results.jsonl` (fixed by #1).
+- [x] `dbadd.parse_item_date` mixed local time (empty branch) and UTC (other
+      branches) in the same `item_date` column — fixed in #4.
 - [ ] `STOP`/`COMMON_NOISE` duplicated across modules (fixed by #2).
 - [ ] `USER_AGENTS` defined in 3 files (fixed by #2).
 - [ ] God modules: `resolve_nonames_cli.py` (1284), `performer_repository.py`

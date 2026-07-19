@@ -24,12 +24,12 @@ def parse_item_date(item_date: str, crawl_ts: int) -> str:
 
     Returns YYYY-MM-DD HH:MM:SS string, or the current timestamp if parsing fails.
     """
+    anchor = datetime.fromtimestamp(crawl_ts, tz=timezone.utc)
+
     if not item_date or not item_date.strip():
-        return datetime.fromtimestamp(crawl_ts).strftime("%Y-%m-%d %H:%M:%S")
+        return anchor.strftime("%Y-%m-%d %H:%M:%S")
 
     d = item_date.strip()
-
-    anchor = datetime.fromtimestamp(crawl_ts, tz=timezone.utc)
 
     # ── Special keywords ──
     if d == "Yesterday":
