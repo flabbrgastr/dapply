@@ -263,6 +263,24 @@ def test_run_llm_pass_persists_via_save_and_apply(tmp_path):
     assert _count_performers(db) == before  # NO_NAME not seeded; only Mia Kalani
 
 
+def test_insert_item_on_fresh_db_has_thumbnail_column(tmp_path):
+    """Regression for the latent bug: create_db's items table was missing the
+    ``thumbnail_url`` column that insert_item (and the thumb scripts) expect.
+    insert_item on a fresh DB raised OperationalError before the fix.
+    """
+    db = str(tmp_path / "perf.db")
+    repo = SqlitePerformerRepository(db)
+    iid = repo.insert_item(item_url="https://sxyprn.com/post/foo", title="Foo video")
+    assert isinstance(iid, int) and iid >= 1
+    conn = sqlite3.connect(db)
+    row = conn.execute(
+        "SELECT item_url, thumbnail_url FROM items WHERE id = ?", (iid,)
+    ).fetchone()
+    conn.close()
+    assert row[0] == "https://sxyprn.com/post/foo"
+    assert row[1] == ""  # column now exists; insert_item defaults it to empty string
+
+
 def test_fast_match_item_slug_substring():
     """Deterministic Phase-1 slug matching (the production workhorse)."""
     multi = [("anna_de_ville", 1, "Anna De Ville")]

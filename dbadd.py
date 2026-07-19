@@ -129,6 +129,7 @@ def create_db(db_path):
             item_date TEXT,  -- Date from the source if available
             hits INTEGER,
             source_file TEXT,
+            thumbnail_url TEXT,
             added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (performer_id) REFERENCES performers (id)
         )
