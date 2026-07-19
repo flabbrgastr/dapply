@@ -241,6 +241,8 @@ def create_app(repo: Optional[PerformerRepository] = None,
         pname = performer["name"] if performer else ""
         paka = performer.get("aka", "") if performer else ""
         pvalidated = bool(performer["validated"]) if performer else False
+        pfirst = performer.get("first_seen", "") if performer else ""
+        plast = performer.get("last_seen", "") if performer else ""
 
         profile_image = repo.get_profile_image(pname)
 
@@ -250,6 +252,8 @@ def create_app(repo: Optional[PerformerRepository] = None,
             "name": pname,
             "aka": paka,
             "validated": pvalidated,
+            "first_seen": pfirst,
+            "last_seen": plast,
             "profile_image": profile_image,
         })
 
@@ -336,7 +340,7 @@ def create_app(repo: Optional[PerformerRepository] = None,
 
     @app.route("/stats")
     def stats_page():
-        return render_template("stats.html")
+        return render_template("viewer.html")
 
     @app.route("/api/stats")
     def get_stats():

@@ -60,3 +60,18 @@ assumes these terms exist.
   with respect to the database** (reads/writes only the cached image on the
   filesystem); the calling route composes it with the repository port. Both
   ports are injected into the webapp via `db_viewer.create_app(repo, analvids)`.
+
+## Web interface (single-page app)
+
+- `db_viewer.py` is a Flask app whose **only** rendered HTML page is
+  `templates/viewer.html` — a single-page app with sections switched by JS
+  (Performers · RefDB · Unassigned · Statistics). `GET /stats` renders the same
+  `viewer.html` and the JS auto-shows the Statistics section; a `#performer-<id>`
+  hash opens a performer detail. `templates/stats.html` was deleted.
+- The shared dark theme lives in `static/style.css` (linked via
+  `BASE + "/static/style.css"` so it works behind the `/performers` reverse-proxy
+  prefix). All data comes from the `/api/*` JSON endpoints; no page renders
+  server-side data beyond the shell.
+- **ADR-0002** — the UI was consolidated into this SPA and decluttered
+  (8-column performer table, truthful KPI bar, settings gear, localised
+  refdb refresh). The route/API contract is frozen; all behaviour tests pass.

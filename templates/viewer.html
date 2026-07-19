@@ -4,302 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Performers Database Viewer</title>
-    <style>
-      :root {
-        --bg: #0f1117;
-        --surface: #1a1d28;
-        --surface2: #232738;
-        --border: #2d3248;
-        --text: #e4e6f0;
-        --text2: #8b8fa3;
-        --accent: #6c8cff;
-        --accent2: #4a6cf7;
-        --green: #34d399;
-        --red: #f87171;
-        --radius: 10px;
-      }
-      * { box-sizing: border-box; }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        margin: 0;
-        padding: 24px;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-      }
-      .container {
-        max-width: 1400px;
-        margin: 0 auto;
-        background: var(--surface);
-        padding: 28px;
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
-      }
-      h1 {
-        margin: 0 0 8px 0;
-        font-size: 22px;
-        font-weight: 600;
-        letter-spacing: -0.3px;
-      }
-      .subtitle {
-        color: var(--text2);
-        font-size: 13px;
-        margin: 0 0 24px 0;
-      }
-      .controls {
-        margin-bottom: 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 12px;
-        padding: 14px 16px;
-        background: var(--surface2);
-        border-radius: var(--radius);
-        font-size: 13px;
-      }
-      .controls select, .controls input[type="text"] {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        color: var(--text);
-        padding: 6px 10px;
-        border-radius: 6px;
-        font-size: 13px;
-        outline: none;
-      }
-      .controls select:focus, .controls input:focus {
-        border-color: var(--accent);
-      }
-      .controls label { cursor: pointer; user-select: none; }
-      .controls input[type="checkbox"] { accent-color: var(--accent); }
-
-      .add-form {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-        padding: 14px 16px;
-        background: var(--surface2);
-        border-radius: var(--radius);
-        align-items: center;
-      }
-      .add-form input {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        color: var(--text);
-        padding: 7px 12px;
-        border-radius: 6px;
-        font-size: 13px;
-        outline: none;
-      }
-      .add-form input:focus { border-color: var(--accent); }
-      .btn {
-        padding: 7px 14px;
-        border: none;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: opacity 0.15s;
-      }
-      .btn:hover { opacity: 0.85; }
-      .btn-primary { background: var(--accent); color: #fff; }
-      .btn-danger { background: var(--red); color: #fff; }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13px;
-      }
-      th, td {
-        padding: 10px 12px;
-        text-align: left;
-        border-bottom: 1px solid var(--border);
-      }
-      th {
-        background: var(--surface2);
-        color: var(--text2);
-        font-weight: 500;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        cursor: pointer;
-        user-select: none;
-        position: sticky;
-        top: 0;
-      }
-      th:hover { color: var(--text); }
-      tr:hover { background: rgba(108,140,255,0.04); }
-      td a {
-        color: var(--accent);
-        text-decoration: none;
-        font-weight: 500;
-      }
-      td a:hover { text-decoration: underline; }
-
-      .rating-input {
-        width: 60px;
-        text-align: center;
-        padding: 4px 6px;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        color: var(--text);
-        border-radius: 5px;
-        font-size: 13px;
-        outline: none;
-      }
-      .rating-input:focus { border-color: var(--accent); }
-
-      .stats {
-        display: flex;
-        gap: 24px;
-        margin-bottom: 20px;
-        padding: 16px 20px;
-        background: var(--surface2);
-        border-radius: var(--radius);
-      }
-      .stat-item { text-align: center; }
-      .stat-number {
-        font-size: 26px;
-        font-weight: 700;
-        color: var(--accent);
-        line-height: 1.2;
-      }
-      .stat-label {
-        font-size: 11px;
-        color: var(--text2);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-
-      .nav-bar {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 24px;
-      }
-      .nav-bar a {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        background: var(--surface2);
-        color: var(--text2);
-        text-decoration: none;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 500;
-        border: 1px solid var(--border);
-        transition: all 0.15s;
-      }
-      .nav-bar a:hover {
-        background: var(--accent);
-        color: #fff;
-        border-color: var(--accent);
-      }
-
-      /* Features panel */
-      #features-panel {
-        margin-bottom:20px;
-        padding:18px 20px;
-        background: var(--surface2);
-        border-radius:var(--radius);
-        border:1px solid var(--border);
-      }
-      #features-panel strong { color: var(--text2); font-size:12px; text-transform:uppercase; letter-spacing:0.5px; }
-
-      /* Tag badges */
-      .tag {
-        display:inline-block;
-        background:rgba(108,140,255,0.12);
-        border:1px solid rgba(108,140,255,0.25);
-        border-radius:20px;
-        padding:3px 12px;
-        font-size:12px;
-        color: var(--text);
-      }
-
-      /* Back button */
-      .back-btn {
-        display:inline-flex;
-        align-items:center;
-        gap:6px;
-        padding:7px 14px;
-        background: var(--surface2);
-        color: var(--text);
-        border:1px solid var(--border);
-        border-radius:6px;
-        font-size:13px;
-        cursor:pointer;
-        margin-bottom:16px;
-        transition:all 0.15s;
-      }
-      .back-btn:hover {
-        background: var(--accent);
-        color:#fff;
-        border-color:var(--accent);
-      }
-
-      .validated-badge {
-        display:inline-block;
-        font-size:14px;
-        line-height:1;
-      }
-
-      /* Modal overlay */
-      .modal {
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.6);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-      }
-      .modal-content {
-        background: var(--surface2);
-        padding: 24px;
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
-        width: 100%;
-        max-width: 500px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-        position: relative;
-      }
-      .modal-content h3 {
-        margin-top: 0;
-      }
-      .modal-content input {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        color: var(--text);
-        border-radius: 6px;
-      }
-      .modal-content label {
-        color: var(--text);
-        font-size: 14px;
-      }
-      .modal .close {
-        position: absolute;
-        top: 12px;
-        right: 16px;
-        font-size: 22px;
-        cursor: pointer;
-        color: var(--text2);
-      }
-      .modal .close:hover {
-        color: var(--text);
-      }
-      .suggestion-item {
-        padding: 10px 12px;
-        cursor: pointer;
-        border-bottom: 1px solid var(--border);
-        color: var(--text);
-        font-size: 14px;
-      }
-      .suggestion-item:hover {
-        background: var(--accent);
-        color: #fff;
-      }
-    </style>
+    <script>
+      // Base path for API/static calls — works behind a reverse-proxy prefix.
+      const BASE = window.location.pathname.replace(/\/+$/, "");
+    </script>
+    <link id="theme-css" rel="stylesheet" href="#" />
   </head>
   <body>
     <div class="container">
@@ -315,32 +24,34 @@
         <a href="#" onclick="showRefDB(); return false;">📖 RefDB</a>
         <a href="#" onclick="showUnassigned(); return false;">⊘ Unassigned</a>
         <a href="#" onclick="showStats(); return false;">📊 Statistics</a>
-        <a href="#" onclick="showSettings(); return false;" style="margin-left:auto;">⚙️ Tags</a>
+        <a href="#" onclick="showSettings(); return false;" style="margin-left:auto;" title="Settings">⚙</a>
       </div>
 
+      <!-- KPI bar -->
       <div class="stats">
         <div class="stat-item">
-          <div class="stat-number" id="total-performers">0</div>
-          <div class="stat-label">Total Performers</div>
+          <div class="stat-number" id="kpi-total">0</div>
+          <div class="stat-label">Total</div>
         </div>
         <div class="stat-item">
-          <div class="stat-number" id="rated-performers">0</div>
-          <div class="stat-label">With Ratings</div>
+          <div class="stat-number" id="kpi-validated">0</div>
+          <div class="stat-label">Validated</div>
         </div>
         <div class="stat-item">
-          <div class="stat-number" id="avg-rating">0.0</div>
-          <div class="stat-label">Avg Rating</div>
+          <div class="stat-number" id="kpi-refdb">0</div>
+          <div class="stat-label">With RefDB</div>
         </div>
         <div class="stat-item">
-          <div class="stat-number" id="refdb-validated">0</div>
-          <div class="stat-label">RefDB Validated</div>
+          <div class="stat-number" id="kpi-dap">0</div>
+          <div class="stat-label">DAP</div>
         </div>
         <div class="stat-item">
-          <div class="stat-number" id="refdb-scraped">0</div>
-          <div class="stat-label">Profiles Scraped</div>
+          <div class="stat-number" id="kpi-unassigned">0</div>
+          <div class="stat-label">Unassigned</div>
         </div>
       </div>
 
+      <!-- Add performer -->
       <div class="add-form">
         <span style="color:var(--text2); font-size:13px;">➕ Add</span>
         <input type="text" id="new-name" placeholder="Performer name" />
@@ -348,6 +59,7 @@
         <button class="btn btn-primary" onclick="addPerformer()">Add</button>
       </div>
 
+      <!-- Controls -->
       <div class="controls">
         <div>
           <strong>Sort by:</strong>
@@ -380,33 +92,27 @@
             placeholder="Search performers..."
             onkeyup="filterPerformers()"
           />
-          <button class="btn" onclick="refreshRefDB()" style="font-size:12px; padding:6px 10px;" title="Recompute refdb match status">🔄 refdb</button>
         </div>
       </div>
 
+      <!-- Performers table (trimmed) -->
       <table id="performers-table">
         <thead>
           <tr>
-            <th onclick="sortTable('id')">ID</th>
             <th onclick="sortTable('name')">Name</th>
             <th onclick="sortTable('aka')">AKA</th>
             <th>Ref</th>
             <th>Nat</th>
             <th>Age</th>
             <th onclick="sortTable('crawls')">Crawls</th>
-            <th onclick="sortTable('first_seen')">First Seen</th>
-            <th onclick="sortTable('last_seen')">Last Seen</th>
-            <th onclick="sortTable('last_updated')">Updated</th>
             <th onclick="sortTable('rating')">Rating</th>
             <th>Actions</th>
           </tr>
         </thead>
-        <tbody id="performers-body">
-          <!-- Data will be populated here by JavaScript -->
-        </tbody>
+        <tbody id="performers-body"></tbody>
       </table>
 
-      <!-- Section to display performer items + features -->
+      <!-- Performer detail: items + features + dates -->
       <div id="performer-items-section" style="display: none; margin-top: 20px">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
           <button class="back-btn" onclick="goBackToPerformers()" style="font-size:13px; padding:4px 10px;">← Back</button>
@@ -420,6 +126,7 @@
             <span id="feat-nat"></span>
             <span id="feat-age"></span>
             <span id="feat-scenes"></span>
+            <span id="feat-dates" style="color:var(--text2);"></span>
           </div>
           <div id="feat-tags" style="margin-top:6px; display:flex; flex-wrap:wrap; gap:3px;"></div>
         </div>
@@ -427,172 +134,180 @@
         <div id="items-list" style="display:flex; flex-direction:column; gap:4px;"></div>
         <button id="items-more-btn" onclick="renderItemsPage()" style="display:none; margin-top:8px; background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:6px; cursor:pointer; font-size:13px; width:100%;"></button>
       </div>
-    </div>
 
-    <!-- Edit/Reassign modal for performers -->
-    <div id="performer-edit-modal" style="display:none;">
-      <div class="modal">
-        <div class="modal-content" style="max-width: 500px;">
-          <span class="close" onclick="closeEditModal()">&times;</span>
-          <h3>Edit / Merge</h3>
-          <div style="margin: 12px 0;">
-            <label style="font-size:13px; color:var(--text2);">Name</label>
-            <input type="text" id="edit-performer-name" style="width:100%; padding:8px; margin-top:2px;" />
-          </div>
-          <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
-          <div style="margin: 12px 0;">
-            <label style="font-size:13px;"><strong>Merge into existing</strong></label>
-            <div style="position:relative;">
-              <input type="text" id="reassign-target" placeholder="Search existing performers..." autocomplete="off"
-                style="width:100%; padding:8px; margin-top:2px;"
-                oninput="searchReassignTarget(this.value)"
-                onblur="setTimeout(() => document.getElementById('reassign-suggestions').style.display='none', 200)"
-                onfocus="if(this.value) searchReassignTarget(this.value)" />
-              <div id="reassign-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:200px; overflow-y:auto; z-index:10;"></div>
+      <!-- Edit / Merge modal -->
+      <div id="performer-edit-modal" style="display:none;">
+        <div class="modal">
+          <div class="modal-content" style="max-width: 500px;">
+            <span class="close" onclick="closeEditModal()">&times;</span>
+            <h3>Edit / Merge</h3>
+            <div style="margin: 12px 0;">
+              <label style="font-size:13px; color:var(--text2);">Name</label>
+              <input type="text" id="edit-performer-name" style="width:100%; padding:8px; margin-top:2px;" />
+            </div>
+            <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
+            <div style="margin: 12px 0;">
+              <label style="font-size:13px;"><strong>Merge into existing</strong></label>
+              <div style="position:relative;">
+                <input type="text" id="reassign-target" placeholder="Search existing performers..." autocomplete="off"
+                  style="width:100%; padding:8px; margin-top:2px;"
+                  oninput="searchReassignTarget(this.value)"
+                  onblur="setTimeout(() => document.getElementById('reassign-suggestions').style.display='none', 200)"
+                  onfocus="if(this.value) searchReassignTarget(this.value)" />
+                <div id="reassign-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:200px; overflow-y:auto; z-index:10;"></div>
+              </div>
+            </div>
+            <div style="margin: 12px 0;">
+              <label style="font-size:13px;"><strong>Or import from analvids</strong></label>
+              <div style="display:flex; gap:6px; margin-top:2px;">
+                <input type="text" id="analvids-url" placeholder="Paste analvids.com/model/... URL" style="flex:1; padding:8px;" />
+                <button class="btn" onclick="fetchAnalvids()" id="fetch-analvids-btn" style="background:#2196F3; color:white; white-space:nowrap;">🔍 Fetch</button>
+              </div>
+              <div id="lookup-results" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border-radius:6px; font-size:13px;"></div>
+            </div>
+            <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+              <button class="btn" onclick="closeEditModal()" style="font-size:13px;">Cancel</button>
+              <button class="btn" onclick="saveEdit()" style="background:#4CAF50; color:white; font-size:13px;">💾 Save</button>
+              <button class="btn" onclick="saveReassign()" style="background:#ff9800; color:white; font-size:13px;">🔀 Merge &amp; Delete</button>
             </div>
           </div>
-          <div style="margin: 12px 0;">
-            <label style="font-size:13px;"><strong>Or import from analvids</strong></label>
-            <div style="display:flex; gap:6px; margin-top:2px;">
-              <input type="text" id="analvids-url" placeholder="Paste analvids.com/model/... URL" style="flex:1; padding:8px;" />
-              <button class="btn" onclick="fetchAnalvids()" id="fetch-analvids-btn" style="background:#2196F3; color:white; white-space:nowrap;">🔍 Fetch</button>
-            </div>
-            <div id="lookup-results" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border-radius:6px; font-size:13px;"></div>
+        </div>
+      </div>
+
+      <!-- Settings modal (non-performer tags) -->
+      <div id="settings-modal" style="display:none;">
+        <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;" onclick="closeSettings()"></div>
+        <div style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px; z-index:1000; width:600px; max-width:90vw; max-height:80vh; overflow:auto;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; font-size:18px;">⚙️ Non-Performer Tags</h2>
+            <button onclick="closeSettings()" style="background:none; border:none; color:var(--text2); font-size:22px; cursor:pointer;">✕</button>
           </div>
-          <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
-          <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button class="btn" onclick="closeEditModal()" style="font-size:13px;">Cancel</button>
-            <button class="btn" onclick="saveEdit()" style="background:#4CAF50; color:white; font-size:13px;">💾 Save</button>
-            <button class="btn" onclick="saveReassign()" style="background:#ff9800; color:white; font-size:13px;">🔀 Merge &amp; Delete</button>
+          <p style="color:var(--text2); font-size:13px; margin-bottom:16px;">
+            These data-subkey values from sxyprn are blocked from being treated as performer names.
+            Fuzzy matching is used, so slight variations are caught automatically.
+          </p>
+          <div style="display:flex; gap:8px; margin-bottom:16px;">
+            <input type="text" id="new-tag-input" placeholder="Tag name (e.g. Chilean)" style="flex:1; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:6px; font-size:13px; outline:none;">
+            <input type="text" id="new-tag-reason" placeholder="Reason" style="flex:1; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:6px; font-size:13px; outline:none;">
+            <button class="btn btn-primary" onclick="addNonPerformerTag()">Add</button>
+          </div>
+          <table style="width:100%; font-size:13px;">
+            <thead>
+              <tr>
+                <th style="padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Tag</th>
+                <th style="padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Reason</th>
+                <th style="padding:8px 10px; text-align:right; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="non-performer-tags-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Reassign Item modal -->
+      <div id="reassign-modal" style="display:none;">
+        <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;" onclick="closeReassignModal()"></div>
+        <div style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; z-index:1000; width:450px; max-width:90vw;">
+          <h3 style="margin:0 0 12px 0;">Reassign Item</h3>
+          <div style="font-size:13px; color:var(--text2); margin-bottom:12px; padding:8px; background:var(--surface2); border-radius:6px;">
+            <span id="reassign-item-title"></span>
+          </div>
+          <label style="font-size:13px; display:block; margin-bottom:4px;"><strong>Move to performer:</strong></label>
+          <div style="position:relative;">
+            <input type="text" id="reassign-modal-target" placeholder="Type performer name..." autocomplete="off"
+              style="width:100%; padding:8px; box-sizing:border-box;"
+              oninput="searchReassignModalTarget(this.value)"
+              onblur="setTimeout(() => document.getElementById('reassign-modal-suggestions').style.display='none', 200)"
+              onfocus="if(this.value) searchReassignModalTarget(this.value)" />
+            <div id="reassign-modal-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:200px; overflow-y:auto; z-index:10;"></div>
+          </div>
+          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+            <button class="btn" onclick="closeReassignModal()" style="font-size:13px;">Cancel</button>
+            <button class="btn" onclick="executeReassign()" style="background:var(--accent); color:white; font-size:13px;">→ Reassign</button>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Settings modal for non-performer tags -->
-    <div id="settings-modal" style="display:none;">
-      <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;" onclick="closeSettings()"></div>
-      <div style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px; z-index:1000; width:600px; max-width:90vw; max-height:80vh; overflow:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-          <h2 style="margin:0; font-size:18px;">⚙️ Non-Performer Tags</h2>
-          <button onclick="closeSettings()" style="background:none; border:none; color:var(--text2); font-size:22px; cursor:pointer;">✕</button>
+      <!-- Reference Database section -->
+      <div id="refdb-section" style="display:none; margin-top: 10px;">
+        <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+          <button class="back-btn" onclick="showPerformers()">← Back</button>
+          <h2 style="margin:0; font-size:18px; font-weight:600;">📖 Reference Database</h2>
+          <span style="color:var(--text2); font-size:13px;" id="refdb-total"></span>
+          <button class="btn" id="refdb-refresh-btn" onclick="refreshRefDB()" style="margin-left:auto; font-size:12px; padding:6px 10px;" title="Recompute refdb match status">🔄 refdb</button>
         </div>
-        <p style="color:var(--text2); font-size:13px; margin-bottom:16px;">
-          These data-subkey values from sxyprn are blocked from being treated as performer names.
-          Fuzzy matching is used, so slight variations are caught automatically.
-        </p>
-        <div style="display:flex; gap:8px; margin-bottom:16px;">
-          <input type="text" id="new-tag-input" placeholder="Tag name (e.g. Chilean)" style="flex:1; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:6px; font-size:13px; outline:none;">
-          <input type="text" id="new-tag-reason" placeholder="Reason" style="flex:1; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:6px; font-size:13px; outline:none;">
-          <button class="btn btn-primary" onclick="addNonPerformerTag()">Add</button>
+
+        <div class="controls" style="flex-wrap:wrap;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input type="text" id="refdb-search" placeholder="Search name..." onkeyup="debounceRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:150px;">
+            <select id="refdb-nat" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
+              <option value="">All nationalities</option>
+            </select>
+            <input type="number" id="refdb-age-min" placeholder="Min age" onkeyup="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:70px;">
+            <input type="number" id="refdb-age-max" placeholder="Max age" onkeyup="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:70px;">
+            <input type="text" id="refdb-tag" placeholder="Filter by tag..." onkeyup="debounceRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:140px;">
+            <select id="refdb-sort" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
+              <option value="name">Name</option>
+              <option value="nationality">Nationality</option>
+              <option value="age">Age</option>
+              <option value="scene_count">Scenes</option>
+              <option value="years_active">Years Active</option>
+            </select>
+            <select id="refdb-order" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
+              <option value="asc">Asc</option>
+              <option value="desc">Desc</option>
+            </select>
+          </div>
         </div>
-        <table style="width:100%; font-size:13px;">
+
+        <table id="refdb-table">
           <thead>
             <tr>
-              <th style="padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Tag</th>
-              <th style="padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Reason</th>
-              <th style="padding:8px 10px; text-align:right; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Actions</th>
+              <th>Name</th>
+              <th>Nationality</th>
+              <th>Age</th>
+              <th>Years Active</th>
+              <th>Tags</th>
+              <th>Scenes</th>
+              <th>Profile</th>
             </tr>
           </thead>
-          <tbody id="non-performer-tags-body">
-          </tbody>
+          <tbody id="refdb-body"></tbody>
         </table>
-      </div>
-    </div>
-
-    <!-- Reassign Item Modal -->
-    <div id="reassign-modal" style="display:none;">
-      <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;" onclick="closeReassignModal()"></div>
-      <div style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; z-index:1000; width:450px; max-width:90vw;">
-        <h3 style="margin:0 0 12px 0;">Reassign Item</h3>
-        <div style="font-size:13px; color:var(--text2); margin-bottom:12px; padding:8px; background:var(--surface2); border-radius:6px;">
-          <span id="reassign-item-title"></span>
-        </div>
-        <label style="font-size:13px; display:block; margin-bottom:4px;"><strong>Move to performer:</strong></label>
-        <div style="position:relative;">
-          <input type="text" id="reassign-modal-target" placeholder="Type performer name..." autocomplete="off"
-            style="width:100%; padding:8px; box-sizing:border-box;"
-            oninput="searchReassignModalTarget(this.value)"
-            onblur="setTimeout(() => document.getElementById('reassign-modal-suggestions').style.display='none', 200)"
-            onfocus="if(this.value) searchReassignModalTarget(this.value)" />
-          <div id="reassign-modal-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:200px; overflow-y:auto; z-index:10;"></div>
-        </div>
-        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
-          <button class="btn" onclick="closeReassignModal()" style="font-size:13px;">Cancel</button>
-          <button class="btn" onclick="executeReassign()" style="background:var(--accent); color:white; font-size:13px;">→ Reassign</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Reference Database Section -->
-    <div id="refdb-section" style="display:none; margin-top: 10px;">
-      <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-        <button class="back-btn" onclick="showPerformers()">← Back</button>
-        <h2 style="margin:0; font-size:18px; font-weight:600;">📖 Reference Database</h2>
-        <span style="color:var(--text2); font-size:13px;" id="refdb-total"></span>
+        <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;" id="refdb-pagination"></div>
       </div>
 
-      <div class="controls" style="flex-wrap:wrap;">
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <input type="text" id="refdb-search" placeholder="Search name..." onkeyup="debounceRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:150px;">
-          <select id="refdb-nat" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
-            <option value="">All nationalities</option>
-          </select>
-          <input type="number" id="refdb-age-min" placeholder="Min age" onkeyup="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:70px;">
-          <input type="number" id="refdb-age-max" placeholder="Max age" onkeyup="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:70px;">
-          <input type="text" id="refdb-tag" placeholder="Filter by tag..." onkeyup="debounceRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:140px;">
-          <select id="refdb-sort" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
-            <option value="name">Name</option>
-            <option value="nationality">Nationality</option>
-            <option value="age">Age</option>
-            <option value="scene_count">Scenes</option>
-            <option value="years_active">Years Active</option>
-          </select>
-          <select id="refdb-order" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
-            <option value="asc">Asc</option>
-            <option value="desc">Desc</option>
-          </select>
+      <!-- Unassigned Items section -->
+      <div id="unassigned-section" style="display:none; margin-top: 10px;">
+        <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+          <button class="back-btn" onclick="showPerformers()">← Back</button>
+          <h2 style="margin:0; font-size:18px; font-weight:600;">⊘ Unassigned Items</h2>
+          <span style="color:var(--text2); font-size:13px;" id="unassigned-total"></span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">ID</th>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">URL</th>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">Title</th>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">Date</th>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);"></th>
+              </tr>
+            </thead>
+            <tbody id="unassigned-body"></tbody>
+          </table>
         </div>
       </div>
 
-      <table id="refdb-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Nationality</th>
-            <th>Age</th>
-            <th>Years Active</th>
-            <th>Tags</th>
-            <th>Scenes</th>
-            <th>Profile</th>
-          </tr>
-        </thead>
-        <tbody id="refdb-body"></tbody>
-      </table>
-
-      <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;" id="refdb-pagination"></div>
-    </div>
-
-    <!-- Unassigned Items Section -->
-    <div id="unassigned-section" style="display:none; margin-top: 10px;">
-      <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-        <button class="back-btn" onclick="showPerformers()">← Back</button>
-        <h2 style="margin:0; font-size:18px; font-weight:600;">⊘ Unassigned Items</h2>
-        <span style="color:var(--text2); font-size:13px;" id="unassigned-total"></span>
-      </div>
-      <div style="overflow-x:auto;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-          <thead>
-            <tr>
-              <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">ID</th>
-              <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">URL</th>
-              <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">Title</th>
-              <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">Date</th>
-              <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);"></th>
-            </tr>
-          </thead>
-          <tbody id="unassigned-body"></tbody>
-        </table>
+      <!-- Statistics section -->
+      <div id="stats-section" style="display:none; margin-top: 10px;">
+        <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+          <button class="back-btn" onclick="showPerformers()">← Back</button>
+          <h2 style="margin:0; font-size:18px; font-weight:600;">📊 Statistics</h2>
+        </div>
+        <div id="stats-content"></div>
       </div>
     </div>
 
@@ -601,8 +316,7 @@
       let currentSort = { column: "name", order: "asc" };
       let currentPerformerId = null;
       let searchTimer = null;
-      // Base path for API calls — works behind a reverse proxy prefix
-      const BASE = window.location.pathname.replace(/\/+$/, "");
+      document.getElementById("theme-css").href = BASE + "/static/style.css";
 
       function formatDate(dateStr) {
         if (!dateStr) return "—";
@@ -624,24 +338,17 @@
         }
       }
 
-      // Load performers when page loads
       document.addEventListener("DOMContentLoaded", function () {
-        loadPerformers();
-        // Check hash for direct performer link (e.g. #performer-123)
+        showPerformers();
+        if (/\/stats$/.test(window.location.pathname)) showStats();
         const hashMatch = location.hash.match(/^#performer-(\d+)$/);
         if (hashMatch) {
           const pid = parseInt(hashMatch[1]);
-          // Fetch performer name and show items
           fetch(api("api/performers/" + pid + "/features"))
             .then(r => r.json())
-            .then(data => {
-              viewPerformerItems(pid, data.name || "Performer " + pid);
-            })
-            .catch(() => {
-              viewPerformerItems(pid, "Performer " + pid);
-            });
+            .then(data => viewPerformerItems(pid, data.name || "Performer " + pid))
+            .catch(() => viewPerformerItems(pid, "Performer " + pid));
         }
-        // Handle hash changes (back/forward navigation)
         window.addEventListener("hashchange", function () {
           const m = location.hash.match(/^#performer-(\d+)$/);
           if (m) {
@@ -660,6 +367,19 @@
         return BASE + "/" + path.replace(/^\/+/, "");
       }
 
+      function hideSections() {
+        ["performers-table", "performer-items-section", "refdb-section", "unassigned-section", "stats-section"]
+          .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; });
+      }
+      function setBrowseChrome(show) {
+        ["add-form", "controls"].forEach(cls => {
+          const el = document.querySelector("." + cls);
+          if (el) el.style.display = show ? (cls === "controls" ? "flex" : "flex") : "none";
+        });
+        const kpi = document.querySelector(".stats");
+        if (kpi) kpi.style.display = show ? "flex" : "none";
+      }
+
       // ── Client-side sorting helper ──
       function sortData(data, column, order) {
         const sorted = [...data];
@@ -668,8 +388,7 @@
           if (va == null) va = "";
           if (vb == null) vb = "";
           if (column === "id" || column === "crawls" || column === "age" || column === "scene_count") {
-            va = parseInt(va) || 0;
-            vb = parseInt(vb) || 0;
+            va = parseInt(va) || 0; vb = parseInt(vb) || 0;
             return order === "asc" ? va - vb : vb - va;
           }
           if (column === "first_seen" || column === "last_seen" || column === "last_updated") {
@@ -692,30 +411,21 @@
         const showAliases = document.getElementById("show-aliases").checked ? "1" : "0";
         const dapOnly = document.getElementById("dap-only").checked ? "1" : "0";
         const searchQ = document.getElementById("search-input").value.trim();
-
         currentSort.column = sortColumn;
         currentSort.order = sortOrder;
-
         const params = new URLSearchParams({ sort_by: sortColumn, sort_order: sortOrder, show_aliases: showAliases, dap_only: dapOnly });
         if (searchQ) params.set("q", searchQ);
-
         fetch(api("api/performers?" + params.toString()))
-          .then((response) => response.json())
-          .then((data) => {
-            performersData = data;
-            renderPerformersTable(performersData);
-            updateStats();
-          })
-          .catch((error) => console.error("Error loading performers:", error));
+          .then(r => r.json())
+          .then(data => { performersData = data; renderPerformersTable(performersData); updateStats(); })
+          .catch(e => console.error("Error loading performers:", e));
       }
 
-      // ── Client-side sort (no server roundtrip) ──
       function sortClient(column) {
         if (currentSort.column === column) {
           currentSort.order = currentSort.order === "asc" ? "desc" : "asc";
         } else {
-          currentSort.column = column;
-          currentSort.order = "asc";
+          currentSort.column = column; currentSort.order = "asc";
         }
         document.getElementById("sort-column").value = column;
         document.getElementById("sort-order").value = currentSort.order;
@@ -723,12 +433,10 @@
         renderPerformersTable(performersData);
       }
 
-      // ── Apply sort from dropdowns (client-side) ──
       function applySort() {
         const col = document.getElementById("sort-column").value;
         const ord = document.getElementById("sort-order").value;
-        currentSort.column = col;
-        currentSort.order = ord;
+        currentSort.column = col; currentSort.order = ord;
         performersData = sortData(performersData, col, ord);
         renderPerformersTable(performersData);
       }
@@ -736,14 +444,9 @@
       function renderPerformersTable(data) {
         const tbody = document.getElementById("performers-body");
         tbody.innerHTML = "";
-
-        // Use DocumentFragment for batch DOM insertion
         const fragment = document.createDocumentFragment();
-
-        data.forEach((performer) => {
+        data.forEach(performer => {
           const row = document.createElement("tr");
-
-          // RefDB status: nothing (verified) | ⚠ uncertain | ✕ needs fix
           let refdbBadge = "";
           const n = performer.name.replace(/'/g, "\\'");
           if (performer.refdb_match === "fuzzy") {
@@ -751,16 +454,8 @@
           } else if (performer.refdb_match === "unmatched" && !performer.validated) {
             refdbBadge = `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(248,113,113,0.10);color:var(--red);font-size:18px;cursor:pointer;line-height:1;" title="Needs fix — click to edit/reassign" onclick="confirmPerformer(${performer.id}, '${n}')">✕</span>`;
           }
-
-          // Use joined feature data directly — no extra HTTP fetches
           const nat = performer.nationality || "";
           const age = performer.age != null ? performer.age : "";
-
-          const ratingCell = document.createElement("td");
-          ratingCell.innerHTML = `
-                    <input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" onchange="updateRating(${performer.id})">
-                `;
-
           const nameCell = document.createElement("td");
           nameCell.innerHTML = `
             <a href="${BASE}/#performer-${performer.id}" target="_blank">${performer.name}</a>
@@ -768,46 +463,29 @@
               ? `<button onclick="confirmPerformer(${performer.id}, '${performer.name.replace(/'/g, "\\'")}')" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px;" title="Confirm or correct name">✎</button>`
               : ""}
           `;
-
+          const ratingCell = document.createElement("td");
+          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" onchange="updateRating(${performer.id})">`;
           row.innerHTML = `
-                    <td>${performer.id}</td>
-                    <td style="white-space:nowrap;">${nameCell.innerHTML}</td>
-                    <td>${performer.aka || ""}</td>
-                    <td>${refdbBadge}</td>
-                    <td>${nat}</td>
-                    <td>${age}</td>
-                    <td>${performer.crawls || 0}</td>
-                    <td>${formatDate(performer.first_seen)}</td>
-                    <td>${formatDate(performer.last_seen)}</td>
-                    <td>${performer.last_updated || ""}
-                `;
+            <td style="white-space:nowrap;">${nameCell.innerHTML}</td>
+            <td>${performer.aka || ""}</td>
+            <td>${refdbBadge}</td>
+            <td>${nat}</td>
+            <td>${age}</td>
+            <td>${performer.crawls || 0}</td>
+          `;
           row.appendChild(ratingCell);
           row.innerHTML += `<td><button class="btn btn-danger" onclick="deletePerformer(${performer.id})" style="padding:3px 10px;font-size:12px;">Del</button></td>`;
-
           fragment.appendChild(row);
         });
-
         tbody.appendChild(fragment);
       }
 
       function viewPerformerItems(performerId, performerName) {
         currentPerformerId = performerId;
-
-        // Update URL hash for permalink / new-tab support
-        if (location.hash !== "#performer-" + performerId) {
-          history.pushState(null, "", "#performer-" + performerId);
-        }
-
-        // Hide performers table and show items section
+        if (location.hash !== "#performer-" + performerId) history.pushState(null, "", "#performer-" + performerId);
         document.getElementById("performers-table").style.display = "none";
-        document.getElementById("performer-items-section").style.display =
-          "block";
-
-        // Update header with performer name
-        document.getElementById("items-header").textContent =
-          `${performerName}`;
-
-        // Load features
+        document.getElementById("performer-items-section").style.display = "block";
+        document.getElementById("items-header").textContent = `${performerName}`;
         fetch(api("api/performers/" + performerId + "/features"))
           .then(r => r.json())
           .then(data => {
@@ -820,15 +498,13 @@
               document.getElementById("feat-nat").innerHTML = f.nationality ? `${f.nationality}` : "";
               document.getElementById("feat-age").innerHTML = f.age != null ? `${f.age}y` : "";
               document.getElementById("feat-scenes").innerHTML = f.scene_count ? `${f.scene_count} scenes` : "";
-              
-              // Badges in header
+              document.getElementById("feat-dates").innerHTML =
+                `First seen ${formatDate(data.first_seen)} · Last seen ${formatDate(data.last_seen)}`;
               document.getElementById("feat-badges").innerHTML = [
                 f.nationality ? `<span style="background:var(--surface); padding:2px 8px; border-radius:4px; border:1px solid var(--border);">${f.nationality}</span>` : "",
                 f.age != null ? `<span style="background:var(--surface); padding:2px 8px; border-radius:4px; border:1px solid var(--border);">${f.age}y</span>` : "",
                 f.scene_count ? `<span style="background:var(--surface); padding:2px 8px; border-radius:4px; border:1px solid var(--border);">${f.scene_count} scenes</span>` : "",
               ].filter(Boolean).join("");
-              
-              // Tags as small chips (collapsed if > 10)
               const tagDiv = document.getElementById("feat-tags");
               tagDiv.innerHTML = "";
               if (f.tags) {
@@ -846,15 +522,12 @@
                   tagDiv.appendChild(more);
                 }
               }
-              
               panel.style.display = "block";
             } else {
               panel.style.display = "none";
             }
           })
           .catch(() => {});
-
-        // Load items for this performer
         loadItemsList(performerId);
       }
 
@@ -865,11 +538,7 @@
       function loadItemsList(performerId) {
         fetch(api(`api/performers/${performerId}/items?sort_by=added_date&sort_order=desc`))
           .then(r => r.json())
-          .then(data => {
-            itemsData = data;
-            itemsShown = 0;
-            renderItemsPage();
-          })
+          .then(data => { itemsData = data; itemsShown = 0; renderItemsPage(); })
           .catch(() => {});
       }
 
@@ -893,23 +562,15 @@
             </div>
           `;
         }).join("");
-        if (itemsShown === ITEMS_PAGE_SIZE) {
-          container.innerHTML = html;
-        } else {
-          container.insertAdjacentHTML("beforeend", html);
-        }
+        if (itemsShown === ITEMS_PAGE_SIZE) container.innerHTML = html;
+        else container.insertAdjacentHTML("beforeend", html);
         const remaining = itemsData.length - itemsShown;
         const moreBtn = document.getElementById("items-more-btn");
-        if (remaining > 0) {
-          moreBtn.textContent = `Show ${Math.min(remaining, ITEMS_PAGE_SIZE)} more (${remaining} left)`;
-          moreBtn.style.display = "block";
-        } else {
-          moreBtn.style.display = "none";
-        }
+        if (remaining > 0) { moreBtn.textContent = `Show ${Math.min(remaining, ITEMS_PAGE_SIZE)} more (${remaining} left)`; moreBtn.style.display = "block"; }
+        else moreBtn.style.display = "none";
       }
 
       let reassignModalItemId = null;
-
       function reassignItem(itemId, titlePreview) {
         reassignModalItemId = itemId;
         document.getElementById("reassign-item-title").textContent = `#${itemId} — ${titlePreview}...`;
@@ -918,12 +579,7 @@
         document.getElementById("reassign-modal").style.display = "block";
         setTimeout(() => document.getElementById("reassign-modal-target").focus(), 100);
       }
-
-      function closeReassignModal() {
-        document.getElementById("reassign-modal").style.display = "none";
-        reassignModalItemId = null;
-      }
-
+      function closeReassignModal() { document.getElementById("reassign-modal").style.display = "none"; reassignModalItemId = null; }
       function searchReassignModalTarget(q) {
         const box = document.getElementById("reassign-modal-suggestions");
         if (!q || q.length < 1) { box.style.display = "none"; return; }
@@ -932,8 +588,7 @@
           .then(data => {
             if (!data.performers || data.performers.length === 0) {
               box.innerHTML = `<div style="padding:10px 12px; color:var(--text2); font-size:13px;">No matches — will create new performer</div>`;
-              box.style.display = "block";
-              return;
+              box.style.display = "block"; return;
             }
             box.innerHTML = data.performers.map(p =>
               `<div class="suggestion-item" onmousedown="selectReassignModalTarget('${p.name.replace(/'/g, "\\'")}')">${escHtml(p.name)} <span style="color:var(--text2); font-size:11px;">#${p.id} · ${p.total_items} items</span></div>`
@@ -941,287 +596,185 @@
             box.style.display = "block";
           });
       }
-
       function selectReassignModalTarget(name) {
         document.getElementById("reassign-modal-target").value = name;
         document.getElementById("reassign-modal-suggestions").style.display = "none";
       }
-
       function executeReassign() {
         const target = document.getElementById("reassign-modal-target").value.trim();
         if (!target) { alert("Enter a performer name"); return; }
         const itemId = reassignModalItemId;
         closeReassignModal();
-        fetch(api(`api/items/${itemId}/reassign`), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_name: target })
-        })
+        fetch(api(`api/items/${itemId}/reassign`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_name: target }) })
           .then(r => r.json())
-          .then(data => {
-            if (data.error) { alert(data.error); return; }
-            showToast(data.message);
-            loadItemsList(currentPerformerId);
-            loadPerformers();
-          })
+          .then(data => { if (data.error) { alert(data.error); return; } showToast(data.message); loadItemsList(currentPerformerId); loadPerformers(); })
           .catch(() => alert("Failed"));
       }
-
       function unassignItem(itemId) {
         if (!confirm(`Unassign item #${itemId}?\nIt will become unassigned.`)) return;
-        fetch(api(`api/items/${itemId}/unassign`), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" }
-        })
+        fetch(api(`api/items/${itemId}/unassign`), { method: "POST", headers: { "Content-Type": "application/json" } })
           .then(r => r.json())
-          .then(data => {
-            if (data.error) { alert(data.error); return; }
-            showToast(data.message);
-            loadItemsList(currentPerformerId);
-            loadPerformers();
-          })
+          .then(data => { if (data.error) { alert(data.error); return; } showToast(data.message); loadItemsList(currentPerformerId); loadPerformers(); })
           .catch(() => alert("Failed"));
       }
-
       function deleteItem(itemId) {
         if (!confirm(`Delete item #${itemId}?\nThis cannot be undone.`)) return;
         fetch(api(`api/items/${itemId}`), { method: "DELETE" })
           .then(r => r.json())
-          .then(data => {
-            if (data.error) { alert(data.error); return; }
-            showToast(data.message);
-            loadItemsList(currentPerformerId);
-            loadPerformers();
-          })
+          .then(data => { if (data.error) { alert(data.error); return; } showToast(data.message); loadItemsList(currentPerformerId); loadPerformers(); })
           .catch(() => alert("Failed"));
       }
-
       function goBackToPerformers() {
-        // Show performers table and hide items section
         document.getElementById("performers-table").style.display = "table";
-        document.getElementById("performer-items-section").style.display =
-          "none";
-        // Clear hash so back/forward works
-        if (location.hash) {
-          history.pushState(null, "", window.location.pathname);
-        }
+        document.getElementById("performer-items-section").style.display = "none";
+        if (location.hash) history.pushState(null, "", window.location.pathname);
       }
 
       function showPerformers() {
+        hideSections();
+        setBrowseChrome(true);
         document.getElementById("performers-table").style.display = "table";
-        document.getElementById("performer-items-section").style.display = "none";
-        document.getElementById("refdb-section").style.display = "none";
-        const addForm = document.querySelector(".add-form");
-        if (addForm) addForm.style.display = "flex";
-        const controls = document.querySelector(".controls");
-        if (controls) controls.style.display = "flex";
-        const stats = document.querySelector(".stats");
-        if (stats) stats.style.display = "flex";
         loadPerformers();
       }
-
       function showStats() {
-        window.location.href = api("stats");
+        hideSections();
+        setBrowseChrome(false);
+        document.getElementById("stats-section").style.display = "block";
+        renderStatistics();
+      }
+      function renderStatistics() {
+        const el = document.getElementById("stats-content");
+        el.innerHTML = '<div style="color:var(--text2);">Loading…</div>';
+        fetch(api("api/stats"))
+          .then(r => r.json())
+          .then(s => {
+            const maxCount = Math.max(1, ...(s.rating_distribution || []).map(d => d.count));
+            const dist = (s.rating_distribution || []).map(d => `
+              <div style="display:flex; align-items:center; gap:8px; margin:4px 0; font-size:13px;">
+                <span style="width:130px; color:var(--text2);">${escHtml(d.range)}</span>
+                <div style="flex:1; height:10px; background:var(--surface2); border-radius:5px; overflow:hidden;">
+                  <div style="width:${(d.count / maxCount * 100).toFixed(1)}%; height:100%; background:var(--accent);"></div>
+                </div>
+                <span style="width:46px; text-align:right;">${d.count}</span>
+              </div>`).join("");
+            const table = (title, rows, extra) => `
+              <h3 style="margin:22px 0 8px; font-size:15px;">${title}</h3>
+              <table><tbody>${(rows || []).map(r => `
+                <tr>
+                  <td style="padding:4px 8px; border-bottom:1px solid var(--border);"><a href="${BASE}/#performer-${r.id}" target="_blank" style="color:var(--accent); text-decoration:none;">${escHtml(r.name)}</a></td>
+                  <td style="padding:4px 8px; border-bottom:1px solid var(--border); color:var(--text2);">${escHtml(r.rating != null ? r.rating : (extra ? extra(r) : ""))}</td>
+                </tr>`).join("")}</tbody></table>`;
+            el.innerHTML = `
+              <div class="stats-grid">
+                ${statCard(s.total_performers, "Total Performers")}
+                ${statCard(s.total_items, "Items")}
+                ${statCard(s.dap_performers, "DAP Performers")}
+                ${statCard(s.total_scenes, "Scenes")}
+                ${statCard(s.rated_performers, "Rated")}
+                ${statCard(s.numeric_avg_rating != null ? s.numeric_avg_rating.toFixed(2) : "—", "Avg (numeric)")}
+              </div>
+              <h3 style="margin:8px 0; font-size:15px;">Rating distribution</h3>
+              ${dist || '<div style="color:var(--text2);">No ratings</div>'}
+              ${table("Top rated", s.top_rated)}
+              ${table("Bottom rated", s.bottom_rated)}
+              ${table("Most crawled", s.most_crawled, r => (r.crawls || 0) + " crawls")}
+            `;
+          })
+          .catch(() => { el.innerHTML = '<div style="color:var(--red);">Failed to load statistics</div>'; });
+      }
+      function statCard(num, label) {
+        return `<div class="stat-card"><div class="num">${num}</div><div class="lbl">${label}</div></div>`;
       }
 
       function updateRating(id) {
         const ratingInput = document.getElementById(`rating-${id}`);
         const rating = ratingInput.value;
-
-        fetch(api(`api/performers/${id}`), {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ rating: rating }),
-        })
-          .then((response) => {
-            if (response.ok) {
-              // Rating updated successfully - no need to reload table for auto-update
-            } else {
-              console.log("Error updating rating for performer " + id);
-            }
-          })
-          .catch((error) => {
-            console.error("Error:", error);
-          });
+        fetch(api(`api/performers/${id}`), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating: rating }) })
+          .then(r => { if (!r.ok) console.log("Error updating rating for performer " + id); })
+          .catch(e => console.error("Error:", e));
       }
-
       function addPerformer() {
         const nameInput = document.getElementById("new-name");
         const ratingInput = document.getElementById("new-rating");
-
         const name = nameInput.value.trim();
         const rating = ratingInput.value.trim();
-
-        if (!name) {
-          alert("Please enter a performer name");
-          return;
-        }
-
-        fetch(api("api/performers"), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ name: name, rating: rating }),
-        })
-          .then((response) => {
-            if (response.ok) {
-              nameInput.value = "";
-              ratingInput.value = "";
-              alert("Performer added successfully!");
-              loadPerformers(); // Reload to show new performer
-            } else {
-              response
-                .json()
-                .then((data) => alert(data.error || "Error adding performer"));
-            }
-          })
-          .catch((error) => {
-            console.error("Error:", error);
-            alert("Error adding performer");
-          });
+        if (!name) { alert("Please enter a performer name"); return; }
+        fetch(api("api/performers"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, rating: rating }) })
+          .then(r => { if (r.ok) { nameInput.value = ""; ratingInput.value = ""; alert("Performer added successfully!"); loadPerformers(); } else { r.json().then(d => alert(d.error || "Error adding performer")); } })
+          .catch(e => { console.error("Error:", e); alert("Error adding performer"); });
       }
-
       function deletePerformer(id) {
         if (confirm("Are you sure you want to delete this performer?")) {
-          fetch(api(`api/performers/${id}`), {
-            method: "DELETE",
-          })
-            .then((response) => {
-              if (response.ok) {
-                alert("Performer deleted successfully!");
-                loadPerformers(); // Reload to show updated data
-              } else {
-                alert("Error deleting performer");
-              }
-            })
-            .catch((error) => {
-              console.error("Error:", error);
-              alert("Error deleting performer");
-            });
+          fetch(api(`api/performers/${id}`), { method: "DELETE" })
+            .then(r => { if (r.ok) { alert("Performer deleted successfully!"); loadPerformers(); } else alert("Error deleting performer"); })
+            .catch(e => { console.error("Error:", e); alert("Error deleting performer"); });
         }
       }
-
-      function sortTable(column) {
-        // Client-side sort — no server roundtrip
-        sortClient(column);
-      }
-
-
+      function sortTable(column) { sortClient(column); }
       function filterPerformers() {
-        // Debounce server-side search: wait 300ms after last keystroke
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => {
-          loadPerformers();
-        }, 300);
+        searchTimer = setTimeout(() => loadPerformers(), 300);
       }
-
       function updateStats() {
-        document.getElementById("total-performers").textContent =
-          performersData.length;
-
-        const ratedPerformers = performersData.filter(
-          (p) => p.rating && p.rating.trim() !== "",
-        ).length;
-        document.getElementById("rated-performers").textContent =
-          ratedPerformers;
-
-        const avgRating =
-          performersData.reduce((sum, p) => {
-            const rating = parseFloat(p.rating);
-            return sum + (isNaN(rating) ? 0 : rating);
-          }, 0) / performersData.length || 0;
-
-        document.getElementById("avg-rating").textContent =
-          avgRating.toFixed(2);
-
-        // RefDB stats
-        fetch(api("api/refdb"))
-          .then(r => r.json())
-          .then(stats => {
-            document.getElementById("refdb-validated").textContent = stats.validated || 0;
-            document.getElementById("refdb-scraped").textContent = stats.scraped || 0;
-          })
-          .catch(() => {});
+        const setKpis = (validated, withRefdb, total, dap, unassigned) => {
+          document.getElementById("kpi-total").textContent = total;
+          document.getElementById("kpi-validated").textContent = validated;
+          document.getElementById("kpi-refdb").textContent = withRefdb;
+          document.getElementById("kpi-dap").textContent = dap;
+          document.getElementById("kpi-unassigned").textContent = unassigned;
+        };
+        fetch(api("api/stats")).then(r => r.json()).then(stats => {
+          const total = stats.total_performers;
+          const dap = stats.dap_performers;
+          fetch(api("api/performers/unassigned/items")).then(r => r.json()).then(un => {
+            const countFrom = list => {
+              const v = list.filter(p => p.validated).length;
+              const w = list.filter(p => p.refdb_match && p.refdb_match !== "unmatched").length;
+              setKpis(v, w, total, dap, un.length);
+            };
+            if (performersData.length) countFrom(performersData);
+            else fetch(api("api/performers")).then(r => r.json()).then(all => { performersData = all; countFrom(all); });
+          });
+        }).catch(() => {});
       }
 
       // ── Settings: Non-Performer Tags ──
       let nonPerformerTags = [];
-
-      function showSettings() {
-        document.getElementById("settings-modal").style.display = "block";
-        loadNonPerformerTags();
-      }
-
-      function closeSettings() {
-        document.getElementById("settings-modal").style.display = "none";
-      }
-
+      function showSettings() { document.getElementById("settings-modal").style.display = "block"; loadNonPerformerTags(); }
+      function closeSettings() { document.getElementById("settings-modal").style.display = "none"; }
       function loadNonPerformerTags() {
-        fetch(api("api/non-performer-tags"))
-          .then(r => r.json())
-          .then(tags => {
-            nonPerformerTags = tags;
-            const tbody = document.getElementById("non-performer-tags-body");
-            tbody.innerHTML = "";
-            tags.forEach(t => {
-              const tr = document.createElement("tr");
-              tr.innerHTML = `
-                <td style="padding:8px 10px; border-bottom:1px solid var(--border);">${escHtml(t.tag)}</td>
-                <td style="padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text2);">${escHtml(t.reason || "")}</td>
-                <td style="padding:8px 10px; border-bottom:1px solid var(--border); text-align:right;">
-                  <button class="btn btn-danger" style="padding:3px 10px; font-size:12px;" onclick="deleteNonPerformerTag(${t.id}, '${escHtml(t.tag)}')">✕</button>
-                </td>
-              `;
-              tbody.appendChild(tr);
-            });
-          })
-          .catch(() => {});
+        fetch(api("api/non-performer-tags")).then(r => r.json()).then(tags => {
+          nonPerformerTags = tags;
+          const tbody = document.getElementById("non-performer-tags-body");
+          tbody.innerHTML = "";
+          tags.forEach(t => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td style="padding:8px 10px; border-bottom:1px solid var(--border);">${escHtml(t.tag)}</td>
+              <td style="padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text2);">${escHtml(t.reason || "")}</td>
+              <td style="padding:8px 10px; border-bottom:1px solid var(--border); text-align:right;">
+                <button class="btn btn-danger" style="padding:3px 10px; font-size:12px;" onclick="deleteNonPerformerTag(${t.id}, '${escHtml(t.tag)}')">✕</button>
+              </td>`;
+            tbody.appendChild(tr);
+          });
+        }).catch(() => {});
       }
-
       function addNonPerformerTag() {
         const tag = document.getElementById("new-tag-input").value.trim();
         const reason = document.getElementById("new-tag-reason").value.trim();
         if (!tag) return;
-        fetch(api("api/non-performer-tags"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tag, reason })
-        })
-          .then(r => {
-            if (r.status === 409) {
-              alert("Tag already exists!");
-              return null;
-            }
-            return r.json();
-          })
-          .then(data => {
-            if (data) {
-              document.getElementById("new-tag-input").value = "";
-              document.getElementById("new-tag-reason").value = "";
-              loadNonPerformerTags();
-            }
-          })
+        fetch(api("api/non-performer-tags"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tag, reason }) })
+          .then(r => { if (r.status === 409) { alert("Tag already exists!"); return null; } return r.json(); })
+          .then(data => { if (data) { document.getElementById("new-tag-input").value = ""; document.getElementById("new-tag-reason").value = ""; loadNonPerformerTags(); } })
           .catch(() => {});
       }
-
       function deleteNonPerformerTag(id, tag) {
         if (!confirm(`Remove "${tag}" from the blocklist?`)) return;
-        fetch(api(`api/non-performer-tags/${id}`), { method: "DELETE" })
-          .then(r => r.json())
-          .then(() => loadNonPerformerTags())
-          .catch(() => {});
+        fetch(api(`api/non-performer-tags/${id}`), { method: "DELETE" }).then(r => r.json()).then(() => loadNonPerformerTags()).catch(() => {});
       }
+      function escHtml(s) { const div = document.createElement("div"); div.textContent = s; return div.innerHTML; }
 
-      function escHtml(s) {
-        const div = document.createElement("div");
-        div.textContent = s;
-        return div.innerHTML;
-      }
-
-      // ── Toast notification ──
+      // ── Toast ──
       function showToast(msg, duration) {
         duration = duration || 3000;
         let el = document.getElementById("toast-msg");
@@ -1231,36 +784,22 @@
           el.style.cssText = "position:fixed;bottom:24px;right:24px;background:#333;color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;z-index:9999;opacity:0;transition:opacity 0.3s;max-width:400px;";
           document.body.appendChild(el);
         }
-        el.textContent = msg;
-        el.style.opacity = "1";
-        clearTimeout(el._timer);
-        el._timer = setTimeout(() => { el.style.opacity = "0"; }, duration);
+        el.textContent = msg; el.style.opacity = "1";
+        clearTimeout(el._timer); el._timer = setTimeout(() => { el.style.opacity = "0"; }, duration);
       }
 
       // ── RefDB refresh ──
       function refreshRefDB() {
         const btn = event.target;
-        btn.textContent = "⏳";
-        btn.disabled = true;
+        btn.textContent = "⏳"; btn.disabled = true;
         fetch(api("api/performers/refresh-refdb"), { method: "POST" })
           .then(r => r.json())
-          .then(data => {
-            btn.textContent = "🔄 refdb";
-            btn.disabled = false;
-            if (data.count !== undefined) {
-              alert(`RefDB status refreshed: ${data.count} performers updated`);
-              loadPerformers();
-            }
-          })
-          .catch(() => {
-            btn.textContent = "🔄 refdb";
-            btn.disabled = false;
-          });
+          .then(data => { btn.textContent = "🔄 refdb"; btn.disabled = false; if (data.count !== undefined) { alert(`RefDB status refreshed: ${data.count} performers updated`); loadPerformers(); } })
+          .catch(() => { btn.textContent = "🔄 refdb"; btn.disabled = false; });
       }
 
-      // ── Performer Edit / Reassign Modal ──
+      // ── Performer Edit / Merge ──
       let editPerformerId = null;
-
       function confirmPerformer(id, currentName) {
         editPerformerId = id;
         document.getElementById("edit-performer-name").value = currentName;
@@ -1270,46 +809,21 @@
         document.getElementById("lookup-results").style.display = "none";
         document.getElementById("performer-edit-modal").style.display = "block";
       }
-
-      function closeEditModal() {
-        document.getElementById("performer-edit-modal").style.display = "none";
-        editPerformerId = null;
-      }
-
+      function closeEditModal() { document.getElementById("performer-edit-modal").style.display = "none"; editPerformerId = null; }
       function saveEdit() {
         const name = document.getElementById("edit-performer-name").value.trim();
         if (!name) return;
-        const id = editPerformerId;
-        closeEditModal();
-        fetch(api(`api/performers/${id}/confirm`), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name })
-        })
-          .then(r => r.json())
-          .then(() => { loadPerformers(); })
-          .catch(() => {});
+        const id = editPerformerId; closeEditModal();
+        fetch(api(`api/performers/${id}/confirm`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })
+          .then(r => r.json()).then(() => loadPerformers()).catch(() => {});
       }
-
       function saveReassign() {
         const targetName = document.getElementById("reassign-target").value.trim();
         if (!targetName) { alert("Enter a target performer name to reassign items to."); return; }
-        const id = editPerformerId;
-        closeEditModal();
-        fetch(api(`api/performers/${id}/reassign`), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_name: targetName, delete_source: true })
-        })
-          .then(r => r.json())
-          .then(data => {
-            if (data.error) { alert("Error: " + data.error); return; }
-            showToast(data.message || "Reassigned!");
-            loadPerformers();
-          })
-          .catch(() => { alert("Reassign failed"); });
+        const id = editPerformerId; closeEditModal();
+        fetch(api(`api/performers/${id}/reassign`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_name: targetName, delete_source: true }) })
+          .then(r => r.json()).then(data => { if (data.error) { alert("Error: " + data.error); return; } showToast(data.message || "Reassigned!"); loadPerformers(); }).catch(() => alert("Reassign failed"));
       }
-
       let reassignSearchTimer = null;
       function searchReassignTarget(q) {
         clearTimeout(reassignSearchTimer);
@@ -1317,34 +831,17 @@
         if (q.length < 1) { suggestions.style.display = "none"; return; }
         reassignSearchTimer = setTimeout(() => {
           fetch(api(`api/performers?q=${encodeURIComponent(q)}&sort_by=name&sort_order=asc&limit=20`))
-            .then(r => r.json())
-            .then(data => {
-              if (!data || data.length === 0) {
-                suggestions.innerHTML = `<div style="padding:8px;color:#999;">No existing performers — will create new</div>`;
-                suggestions.style.display = "block";
-                return;
-              }
-              suggestions.innerHTML = data
-                .filter(p => p.id !== editPerformerId)
-                .map(p =>
-                  `<div class="suggestion-item"
-                       data-id="${p.id}"
-                       data-name="${p.name.replace(/"/g, "&quot;")}"
-                       onmousedown="selectReassignTarget('${p.name.replace(/'/g, "\\'")}')">
-                    #${p.id} ${p.name} ${p.refdb_match === 'matched' ? '✓' : ''} ${p.refdb_match === 'fuzzy' ? '~' : ''}
-                   </div>`
-                )
-                .join("");
+            .then(r => r.json()).then(data => {
+              if (!data || data.length === 0) { suggestions.innerHTML = `<div style="padding:8px;color:#999;">No existing performers — will create new</div>`; suggestions.style.display = "block"; return; }
+              suggestions.innerHTML = data.filter(p => p.id !== editPerformerId).map(p =>
+                `<div class="suggestion-item" data-id="${p.id}" data-name="${p.name.replace(/"/g, "&quot;")}" onmousedown="selectReassignTarget('${p.name.replace(/'/g, "\\'")}')">
+                  #${p.id} ${p.name} ${p.refdb_match === 'matched' ? '✓' : ''} ${p.refdb_match === 'fuzzy' ? '~' : ''}
+                </div>`).join("");
               suggestions.style.display = "block";
-            })
-            .catch(() => {});
+            }).catch(() => {});
         }, 200);
       }
-
-      function selectReassignTarget(name) {
-        document.getElementById("reassign-target").value = name;
-        document.getElementById("reassign-suggestions").style.display = "none";
-      }
+      function selectReassignTarget(name) { document.getElementById("reassign-target").value = name; document.getElementById("reassign-suggestions").style.display = "none"; }
 
       // ── Analvids URL Fetch ──
       function fetchAnalvids() {
@@ -1352,84 +849,42 @@
         if (!url) return;
         const btn = document.getElementById("fetch-analvids-btn");
         const results = document.getElementById("lookup-results");
-        btn.textContent = "⏳";
-        btn.disabled = true;
-        results.style.display = "block";
-        results.innerHTML = `<span style="color:var(--text2);">Fetching...</span>`;
-
+        btn.textContent = "⏳"; btn.disabled = true; results.style.display = "block"; results.innerHTML = `<span style="color:var(--text2);">Fetching...</span>`;
         fetch(api(`api/performers/lookup-analvids-url?url=${encodeURIComponent(url)}`))
-          .then(r => r.json())
-          .then(data => {
-            btn.textContent = "🔍 Fetch";
-            btn.disabled = false;
-            if (data.error) {
-              results.innerHTML = `<span style="color:var(--red);">${data.error}</span>`;
-              return;
-            }
-            const flag = data.nationality || '';
+          .then(r => r.json()).then(data => {
+            btn.textContent = "🔍 Fetch"; btn.disabled = false;
+            if (data.error) { results.innerHTML = `<span style="color:var(--red);">${data.error}</span>`; return; }
             results.innerHTML = `
               <div style="display:flex; gap:12px; align-items:flex-start;">
-                ${data.local_image ? `<img src="${data.local_image}" alt="${data.name}" style="width:100px; height:auto; border-radius:6px; object-fit:cover; flex-shrink:0;">` : ''}
+                ${data.local_image ? `<img src="${data.local_image}" alt="${data.name}" style="width:100px; height:auto; border-radius:6px; object-fit:cover; flex-shrink:0;">` : ""}
                 <div style="flex:1;">
-                  <div style="margin-bottom:6px;"><strong>${data.name}</strong> ${data.nationality ? `<span style="color:var(--text2);">${data.nationality.toUpperCase()}</span>` : ''} ${data.scenes ? `<span style="color:var(--text2);">· ${data.scenes} scenes</span>` : ''}</div>
+                  <div style="margin-bottom:6px;"><strong>${data.name}</strong> ${data.nationality ? `<span style="color:var(--text2);">${data.nationality.toUpperCase()}</span>` : ""} ${data.scenes ? `<span style="color:var(--text2);">· ${data.scenes} scenes</span>` : ""}</div>
                   <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                     <button class="btn" onclick="mergeFromAnalvids('${data.name.replace(/'/g, "\\'")}', '${data.url}')" style="background:#ff9800; color:white; font-size:12px; padding:6px 12px;">🔀 Merge into ${data.name}</button>
                     <a href="${data.url}" target="_blank" style="font-size:12px; color:var(--accent);">View on analvids ↗</a>
                   </div>
                 </div>
-              </div>
-            `;
-          })
-          .catch(() => {
-            btn.textContent = "🔍 Fetch";
-            btn.disabled = false;
-            results.innerHTML = `<span style="color:var(--red);">Failed — try again</span>`;
-          });
+              </div>`;
+          }).catch(() => { btn.textContent = "🔍 Fetch"; btn.disabled = false; results.innerHTML = `<span style="color:var(--red);">Failed — try again</span>`; });
       }
-
       function mergeFromAnalvids(targetName, targetUrl) {
         const currentName = document.getElementById("edit-performer-name").value.trim();
         const ok = confirm(`Merge "${currentName}" → "${targetName}"?\n\nAll items move to ${targetName}, then ${currentName} is deleted.`);
         if (!ok) return;
-        const id = editPerformerId;
-        closeEditModal();
-        fetch(api(`api/performers/${id}/reassign`), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_name: targetName, delete_source: true })
-        })
-          .then(r => r.json())
-          .then(data => {
-            if (data.error) { alert("Error: " + data.error); return; }
-            showToast(`Merged into ${targetName}`);
-            loadPerformers();
-          })
-          .catch(() => { alert("Merge failed"); });
+        const id = editPerformerId; closeEditModal();
+        fetch(api(`api/performers/${id}/reassign`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_name: targetName, delete_source: true }) })
+          .then(r => r.json()).then(data => { if (data.error) { alert("Error: " + data.error); return; } showToast(`Merged into ${targetName}`); loadPerformers(); }).catch(() => alert("Merge failed"));
       }
 
       // ── Reference Database Browser ──
       let refdbTimer = null;
-
       function showRefDB() {
-        document.getElementById("performer-items-section").style.display = "none";
+        hideSections(); setBrowseChrome(false);
         document.getElementById("refdb-section").style.display = "block";
-        document.getElementById("performers-table").style.display = "none";
-        const addForm = document.querySelector(".add-form");
-        if (addForm) addForm.style.display = "none";
-        const controls = document.querySelector(".controls");
-        if (controls) controls.style.display = "none";
-        const stats = document.querySelector(".stats");
-        if (stats) stats.style.display = "none";
         loadRefDB();
       }
-
-      function debounceRefDB() {
-        clearTimeout(refdbTimer);
-        refdbTimer = setTimeout(loadRefDB, 300);
-      }
-
+      function debounceRefDB() { clearTimeout(refdbTimer); refdbTimer = setTimeout(loadRefDB, 300); }
       let refdbPage = 1;
-
       function loadRefDB() {
         const q = document.getElementById("refdb-search").value.trim();
         const nat = document.getElementById("refdb-nat").value;
@@ -1438,34 +893,18 @@
         const tag = document.getElementById("refdb-tag").value.trim();
         const sort = document.getElementById("refdb-sort").value;
         const order = document.getElementById("refdb-order").value;
-
         let params = new URLSearchParams();
         if (q) params.set("q", q);
         if (nat) params.set("nationality", nat);
         if (ageMin) params.set("age_min", ageMin);
         if (ageMax) params.set("age_max", ageMax);
         if (tag) params.set("tag", tag);
-        params.set("sort_by", sort);
-        params.set("sort_order", order);
-        params.set("page", refdbPage);
-
+        params.set("sort_by", sort); params.set("sort_order", order); params.set("page", refdbPage);
         fetch(api("api/refdb/performers?" + params.toString()))
-          .then(r => r.json())
-          .then(resp => {
+          .then(r => r.json()).then(resp => {
             document.getElementById("refdb-total").textContent = `(${resp.total} models)`;
-
-            // Fill nationality dropdown
             const natSel = document.getElementById("refdb-nat");
-            if (natSel.options.length <= 1) {
-              resp.nationalities.forEach(n => {
-                const opt = document.createElement("option");
-                opt.value = n;
-                opt.textContent = n;
-                natSel.appendChild(opt);
-              });
-            }
-
-            // Render table
+            if (natSel.options.length <= 1) resp.nationalities.forEach(n => { const opt = document.createElement("option"); opt.value = n; opt.textContent = n; natSel.appendChild(opt); });
             const tbody = document.getElementById("refdb-body");
             tbody.innerHTML = "";
             resp.data.forEach(m => {
@@ -1478,55 +917,27 @@
                 <td>${escHtml(m.years_active || "")}</td>
                 <td style="font-size:12px; color:var(--text2);">${escHtml(tags)}${(m.tags || "").split(", ").length > 5 ? "..." : ""}</td>
                 <td>${m.profile_scene_count || m.dir_scene_count || 0}</td>
-                <td>${m.profile_url ? `<a href="${m.profile_url}" target="_blank">🔗</a>` : ""}</td>
-              `;
+                <td>${m.profile_url ? `<a href="${m.profile_url}" target="_blank">🔗</a>` : ""}</td>`;
               tbody.appendChild(tr);
             });
-
-            // Pagination
             const totalPages = Math.ceil(resp.total / resp.per_page);
             const pg = document.getElementById("refdb-pagination");
             pg.innerHTML = "";
-            if (resp.page > 1) {
-              const btn = document.createElement("button");
-              btn.className = "btn";
-              btn.textContent = "← Prev";
-              btn.onclick = () => { refdbPage = resp.page - 1; loadRefDB(); };
-              pg.appendChild(btn);
-            }
-            const span = document.createElement("span");
-            span.style.cssText = "padding:7px 12px; font-size:13px; color:var(--text2);";
-            span.textContent = `Page ${resp.page} of ${totalPages}`;
-            pg.appendChild(span);
-            if (resp.page < totalPages) {
-              const btn = document.createElement("button");
-              btn.className = "btn";
-              btn.textContent = "Next →";
-              btn.onclick = () => { refdbPage = resp.page + 1; loadRefDB(); };
-              pg.appendChild(btn);
-            }
-          })
-          .catch(() => {});
+            if (resp.page > 1) { const b = document.createElement("button"); b.className = "btn"; b.textContent = "← Prev"; b.onclick = () => { refdbPage = resp.page - 1; loadRefDB(); }; pg.appendChild(b); }
+            const span = document.createElement("span"); span.style.cssText = "padding:7px 12px; font-size:13px; color:var(--text2);"; span.textContent = `Page ${resp.page} of ${totalPages}`; pg.appendChild(span);
+            if (resp.page < totalPages) { const b = document.createElement("button"); b.className = "btn"; b.textContent = "Next →"; b.onclick = () => { refdbPage = resp.page + 1; loadRefDB(); }; pg.appendChild(b); }
+          }).catch(() => {});
       }
 
+      // ── Unassigned ──
       function showUnassigned() {
-        document.getElementById("performer-items-section").style.display = "none";
-        document.getElementById("refdb-section").style.display = "none";
+        hideSections(); setBrowseChrome(false);
         document.getElementById("unassigned-section").style.display = "block";
-        document.getElementById("performers-table").style.display = "none";
-        const addForm = document.querySelector(".add-form");
-        if (addForm) addForm.style.display = "none";
-        const controls = document.querySelector(".controls");
-        if (controls) controls.style.display = "none";
-        const stats = document.querySelector(".stats");
-        if (stats) stats.style.display = "none";
         loadUnassigned();
       }
-
       function loadUnassigned() {
         fetch(api("api/performers/unassigned/items"))
-          .then(r => r.json())
-          .then(data => {
+          .then(r => r.json()).then(data => {
             document.getElementById("unassigned-total").textContent = `${data.length} items`;
             const tbody = document.getElementById("unassigned-body");
             tbody.innerHTML = "";
@@ -1540,14 +951,11 @@
                 <td style="padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap;">
                   <button onclick="reassignItem(${item.id}, '${(item.title || "").replace(/'/g, "\\'").substring(0, 40)}')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">→ move</button>
                   <button onclick="deleteItem(${item.id})" style="background:none; border:1px solid var(--red); color:var(--red); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">✕ delete</button>
-                </td>
-              `;
+                </td>`;
               tbody.appendChild(row);
             });
-          })
-          .catch(() => {});
+          }).catch(() => {});
       }
-
     </script>
   </body>
 </html>
