@@ -12,11 +12,8 @@ from flask import Flask, jsonify, render_template, request
 from dbadd import create_db
 from performer_repository import SqlitePerformerRepository
 from viewer_queries import (
-    add_performer_to_refdb,
     build_stats_payload,
-    compute_refdb_status,
     fetch_analvids_profile,
-    get_profile_image_for_name,
     search_analvids,
 )
 
@@ -87,7 +84,7 @@ def confirm_performer(performer_id):
         if current_name not in (performer.get("aka") or ""):
             repo.update_aka(performer_id, current_name)
 
-    add_performer_to_refdb(target_name)
+    repo.add_to_refdb(target_name)
     repo.set_validated(performer_id)
 
     return jsonify({"message": "Performer confirmed", "name": target_name})
@@ -207,7 +204,7 @@ def lookup_analvids():
 def lookup_analvids_url():
     """Fetch an analvids model profile by URL and extract performer info."""
     raw = request.args.get("url", "").strip()
-    return jsonify(fetch_analvids_profile(raw))
+    return jsonify(fetch_analvids_profile(raw, repo))
 
 
 @app.route("/api/performers/<int:performer_id>/features")
@@ -220,7 +217,7 @@ def get_performer_features(performer_id):
     paka = performer.get("aka", "") if performer else ""
     pvalidated = bool(performer["validated"]) if performer else False
 
-    profile_image = get_profile_image_for_name(pname)
+    profile_image = repo.get_profile_image(pname)
 
     return jsonify({
         "features": feat,
@@ -331,7 +328,7 @@ def get_stats():
 
 @app.route("/api/performers/refresh-refdb", methods=["POST"])
 def refresh_refdb_status():
-    count = compute_refdb_status()
+    count = repo.compute_refdb_status()
     if count >= 0:
         return jsonify({"message": f"Updated {count} performers", "count": count})
     return jsonify({"error": "RefDB status computation failed"}), 500
@@ -339,7 +336,7 @@ def refresh_refdb_status():
 
 if __name__ == "__main__":
     create_db("performers.db")
-    updated = compute_refdb_status()
+    updated = repo.compute_refdb_status()
     if updated > 0:
         print(f"  ~ refdb_status computed for {updated} performers")
     app.run(debug=False, host='0.0.0.0', port=8009)

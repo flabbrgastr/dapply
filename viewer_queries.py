@@ -1,93 +1,25 @@
 """
 Data-access and external-fetch logic for the performer viewer.
 
-No Flask in this module: these are plain functions that talk to the database
-(directly, for refdb tables not yet behind the repo port) or to analvids.com.
-The Flask routes in ``db_viewer.py`` are the only callers and wrap the
-returned dicts in ``jsonify``.
+No Flask in this module, and **no raw SQL** — every database read/write goes
+through the ``PerformerRepository`` port (``repo``). This module owns two things:
+
+  * the analvids.com lookups (network + HTML scraping) — an external source,
+  * the /api/stats payload assembly (pulls from the port, sorts/categorizes).
+
+Pure presentation helpers (rating sort/category) live in ``viewer_rendering.py``.
 """
 
 import os
 import re
-import sqlite3
 from collections import Counter
 from io import BytesIO
-from typing import List, Optional
 from urllib.parse import quote
 
 import requests as http_requests
 from PIL import Image as PIL_Image
 
 from viewer_rendering import _RATING_HIERARCHY, _get_rating_category, _rating_sort_key
-
-DB = "performers.db"
-
-
-# ── RefDB status (performer <-> refdb_models matching) ──
-
-def compute_refdb_status() -> int:
-    """
-    Batch-compute refdb_status for all performers.
-    Stores 'matched', 'fuzzy', or NULL (unmatched) in the performers table.
-    Returns the number of performers updated.
-    """
-    try:
-        from rapidfuzz import fuzz, process
-    except ImportError:
-        return 0
-
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-
-    c.execute("SELECT name FROM refdb_models")
-    all_names = [row[0] for row in c.fetchall()]
-    if not all_names:
-        conn.close()
-        return 0
-
-    c.execute("SELECT id, name FROM performers WHERE refdb_status IS NULL")
-    pending = c.fetchall()
-    updated = 0
-    for pid, name in pending:
-        status = None
-        name_lower = name.lower()
-        for n in all_names:
-            if n.lower() == name_lower:
-                status = "matched"
-                break
-        if status is None:
-            result = process.extractOne(name, all_names, scorer=fuzz.token_sort_ratio, score_cutoff=88)
-            if result:
-                status = "fuzzy"
-        if status:
-            c.execute("UPDATE performers SET refdb_status = ? WHERE id = ?", (status, pid))
-            updated += 1
-    conn.commit()
-    conn.close()
-    return updated
-
-
-def check_refdb_match(name: str) -> str:
-    """On-the-fly refdb match for a single name (matched / fuzzy / unmatched / unknown)."""
-    try:
-        from rapidfuzz import fuzz, process
-    except ImportError:
-        return "unknown"
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-    c.execute("SELECT name FROM refdb_models")
-    all_names = [row[0] for row in c.fetchall()]
-    conn.close()
-    if not all_names:
-        return "unknown"
-    name_lower = name.lower()
-    for n in all_names:
-        if n.lower() == name_lower:
-            return "matched"
-    result = process.extractOne(name, all_names, scorer=fuzz.token_sort_ratio, score_cutoff=88)
-    if result:
-        return "fuzzy"
-    return "unmatched"
 
 
 # ── Analvids.com lookups ──
@@ -101,7 +33,7 @@ def search_analvids(q: str) -> dict:
             return {"results": [], "error": f"analvids returned {resp.status_code}"}
 
         html = resp.text
-        results: List[dict] = []
+        results: list = []
         seen = set()
 
         cards = html.split('class="model-top__img"')
@@ -143,11 +75,11 @@ def search_analvids(q: str) -> dict:
         return {"results": [], "error": str(e)}
 
 
-def fetch_analvids_profile(raw: str) -> dict:
+def fetch_analvids_profile(raw: str, repo) -> dict:
     """
     Resolve a performer name or analvids.com URL to a profile, scraping the
-    model page and caching the profile image as a local webp thumbnail.
-    Returns the profile dict or {"error": ...}.
+    model page and caching the profile image as a local webp thumbnail via the
+    repository port. Returns the profile dict or {"error": ...}.
     """
     if not raw:
         return {"error": "Paste a name or analvids.com URL"}
@@ -239,7 +171,7 @@ def fetch_analvids_profile(raw: str) -> dict:
         if not name:
             return {"error": "Could not extract performer name"}
 
-        # Store profile image as webp thumbnail
+        # Store profile image as webp thumbnail (filesystem + DB via the port)
         local_image = None
         if image and model_id:
             try:
@@ -260,24 +192,7 @@ def fetch_analvids_profile(raw: str) -> dict:
                     img_data.save(local_path, "WEBP", quality=75)
                     local_image = f"/performers/static/images/{fname}"
 
-                    conn2 = sqlite3.connect(DB)
-                    conn2.execute(
-                        """CREATE TABLE IF NOT EXISTS performer_images (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            performer_id INTEGER, model_id INTEGER,
-                            image_url TEXT, local_path TEXT,
-                            type TEXT DEFAULT "profile",
-                            added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )"""
-                    )
-                    conn2.execute(
-                        "INSERT OR REPLACE INTO performer_images "
-                        "(performer_id, model_id, image_url, local_path, type) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (None, model_id, image, local_image, "profile"),
-                    )
-                    conn2.commit()
-                    conn2.close()
+                    repo.save_profile_image(model_id, image, local_image)
             except Exception:
                 pass
 
@@ -291,47 +206,10 @@ def fetch_analvids_profile(raw: str) -> dict:
         return {"error": str(e)}
 
 
-# ── RefDB write helpers ──
-
-def add_performer_to_refdb(target_name: str) -> None:
-    """Insert a manually-confirmed performer name into refdb_models + validated tags."""
-    conn = sqlite3.connect(DB)
-    try:
-        conn.execute(
-            "INSERT OR IGNORE INTO refdb_models (name, profile_url) VALUES (?, ?)",
-            (target_name, ""),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO refdb_validated_tags (tag, refdb_model_id, match_type) "
-            "SELECT ?, id, 'manual' FROM refdb_models WHERE name = ?",
-            (target_name, target_name),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_profile_image_for_name(pname: str) -> Optional[str]:
-    """Return the cached local profile image path for a performer name, if any."""
-    if not pname:
-        return None
-    conn = sqlite3.connect(DB)
-    try:
-        img = conn.execute(
-            """SELECT pi.local_path FROM performer_images pi
-                JOIN refdb_models m ON m.id = pi.model_id
-                WHERE LOWER(m.name) = LOWER(?) LIMIT 1""",
-            (pname,),
-        ).fetchone()
-        return img[0] if img else None
-    finally:
-        conn.close()
-
-
 # ── Stats payload ──
 
 def build_stats_payload(repo) -> dict:
-    """Assemble the full /api/stats payload (rating distribution, top/bottom, etc.)."""
+    """Assemble the full /api/stats payload from the repository port."""
     stats = repo.get_stats()
 
     rated = repo.get_all_rated()
@@ -343,18 +221,6 @@ def build_stats_payload(repo) -> dict:
         round(sum(_rating_sort_key(p["rating"]) for p in sorted_rated) / len(sorted_rated), 2)
         if sorted_rated else 0.0
     )
-
-    conn = sqlite3.connect(DB)
-    try:
-        avg_numeric = conn.execute("""
-            SELECT AVG(CAST(rating AS REAL)) FROM performers
-            WHERE rating IS NOT NULL AND rating != ""
-            AND (rating GLOB '[0-9]*' OR rating GLOB '[0-9]*.[0-9]*')
-        """).fetchone()[0]
-        avg_numeric = round(avg_numeric, 2) if avg_numeric else 0.0
-    except Exception:
-        avg_numeric = 0.0
-    conn.close()
 
     categories = [(_get_rating_category(p["rating"]), p["rating"]) for p in rated]
     rating_counts = Counter(cat for cat, _ in categories)
@@ -371,7 +237,7 @@ def build_stats_payload(repo) -> dict:
         "rating_distribution": dist_list,
         "rated_performers": len(rated),
         "avg_rating": avg_alphabetical,
-        "numeric_avg_rating": avg_numeric,
+        "numeric_avg_rating": stats["numeric_avg_rating"],
         "top_rated": top_rated,
         "bottom_rated": bottom_rated,
         "most_crawled": most_crawled,

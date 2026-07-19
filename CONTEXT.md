@@ -1,0 +1,51 @@
+# CONTEXT — Domain Model
+
+Shared language for the dapply project. Read this before renaming things or
+proposing seams; the architecture review (`/improve-codebase-architecture`)
+assumes these terms exist.
+
+## Core entities
+
+- **Performer** — a person in the database. Unique `name`; carries `urls`
+  (pipe-separated), a `crawls` counter, `aka` (alternate spellings), a `rating`,
+  a `validated` flag, `first_seen` / `last_seen`, and a `refdb_status`.
+- **Item** — a single scene/video post. Belongs to one performer (or
+  `NO_NAME`). Carries `item_url`, `title`, `item_date`, `hits`, `source_file`,
+  and `thumbnail_url`.
+- **NO_NAME** — sentinel performer for items whose performer could not be
+  determined during scraping. The resolver tries to reassign these.
+- **RefDB model** — a verified model profile scraped from analvids.com
+  (`refdb_models`). The source of truth used to **confirm/validate** performers.
+  `refdb_validated_tags` records manually confirmed tags.
+- **Scene** — a scene record (`performer_scenes`) linking an item to
+  co-performers; used for co-performer analysis.
+- **Profile image** — a cached webp thumbnail of a refdb model
+  (`performer_images`), stored locally after an analvids lookup.
+
+## Performer attributes (vocabulary)
+
+- **AKA** — alternate spellings of a performer name, accumulated when fuzzy
+  matching merges near-miss spellings (e.g. `Mia Kalany` → AKA of `Mia Kalani`).
+- **Validated** — flag that a performer is a real, confirmed model. Set when an
+  item title starts with `Model:`, when confirmed via the web UI, or when the
+  name matches a refdb model.
+- **Crawl** — one scrape run. The `crawls` counter increments per *new* URL
+  found for a performer (re-seen URLs don't count).
+- **Rating** — a quality score. Either an **alphabetical tier** (`AAA`…`E`, each
+  with optional `+`/`-`) or a **numeric** value (`0`–`10`). The stats view turns
+  ratings into a sort key and a distribution; see `viewer_rendering.py`.
+- **RefDB status** — per-performer match against `refdb_models`: `matched`
+  (exact name) or `fuzzy` (near, via rapidfuzz). Computed in batch.
+- **DAP** — "double anal" tag on `performer_features`; used for DAP counts.
+
+## Architectural seam
+
+- **PerformerRepository** — the single **port** for all performer-database
+  operations. Two adapters satisfy it:
+  - `SqlitePerformerRepository` — production, backed by `performers.db`.
+  - `InMemoryPerformerRepository` — tests, backed by dicts.
+- The webapp (`db_viewer.py` + `viewer_queries.py`) talks to the database
+  **only** through this port; raw `sqlite3` does not appear in the webapp layer.
+- **ADR-0001** — the resolver must **not** create performers; performer
+  creation is owned by the `dbadd` ingestion path and the web UI's confirm
+  action. The repository port is the only writer.

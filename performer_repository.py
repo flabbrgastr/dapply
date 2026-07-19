@@ -203,7 +203,8 @@ class PerformerRepository(ABC):
 
     @abstractmethod
     def get_stats(self) -> dict:
-        """Aggregate stats: total performers, items, DAP count, rating distribution, etc."""
+        """Aggregate stats: total performers, items, DAP count, rating distribution,
+        item histogram, and numeric_avg_rating."""
 
     @abstractmethod
     def get_stale(self, stale_days: int = 30) -> List[dict]:
@@ -258,6 +259,24 @@ class PerformerRepository(ABC):
     @abstractmethod
     def get_all_rated(self) -> List[dict]:
         """All performers with non-empty rating."""
+
+    # --- RefDB writes / profile images ---
+
+    @abstractmethod
+    def add_to_refdb(self, name: str) -> None:
+        """Insert a manually-confirmed performer name into refdb_models + validated tags."""
+
+    @abstractmethod
+    def get_profile_image(self, name: str) -> Optional[str]:
+        """Return the cached local profile image path for a performer name, or None."""
+
+    @abstractmethod
+    def save_profile_image(self, model_id: int, image_url: str, local_path: str) -> None:
+        """Persist a cached profile image (model_id, source url, local path)."""
+
+    @abstractmethod
+    def compute_refdb_status(self) -> int:
+        """Batch-compute refdb_status (matched/fuzzy) for performers; return count updated."""
 
     # --- Bulk insert ---
 
@@ -821,6 +840,14 @@ class SqlitePerformerRepository(PerformerRepository):
             bucket = c if c <= 10 else "11+"
             stats["item_histogram"][bucket] = stats["item_histogram"].get(bucket, 0) + 1
 
+        # Numeric average rating (was a raw query in viewer_queries.build_stats_payload)
+        avg_numeric = conn.execute("""
+            SELECT AVG(CAST(rating AS REAL)) FROM performers
+            WHERE rating IS NOT NULL AND rating != ""
+            AND (rating GLOB '[0-9]*' OR rating GLOB '[0-9]*.[0-9]*')
+        """).fetchone()[0]
+        stats["numeric_avg_rating"] = round(avg_numeric, 2) if avg_numeric else 0.0
+
         conn.close()
         return stats
 
@@ -1029,6 +1056,86 @@ class SqlitePerformerRepository(PerformerRepository):
         return [dict(r) for r in rows]
 
 
+    # --- RefDB writes / profile images ---
+
+    def add_to_refdb(self, name: str) -> None:
+        conn = self._conn()
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO refdb_models (name, profile_url) VALUES (?, ?)",
+                (name, ""),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO refdb_validated_tags (tag, refdb_model_id, match_type) "
+                "SELECT ?, id, 'manual' FROM refdb_models WHERE name = ?",
+                (name, name),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_profile_image(self, name: str) -> Optional[str]:
+        if not name:
+            return None
+        conn = self._conn()
+        try:
+            img = conn.execute(
+                """SELECT pi.local_path FROM performer_images pi
+                    JOIN refdb_models m ON m.id = pi.model_id
+                    WHERE LOWER(m.name) = LOWER(?) LIMIT 1""",
+                (name,),
+            ).fetchone()
+            return img[0] if img else None
+        finally:
+            conn.close()
+
+    def save_profile_image(self, model_id: int, image_url: str, local_path: str) -> None:
+        conn = self._conn()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO performer_images "
+                "(performer_id, model_id, image_url, local_path, type) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (None, model_id, image_url, local_path, "profile"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def compute_refdb_status(self) -> int:
+        try:
+            from rapidfuzz import fuzz, process
+        except ImportError:
+            return 0
+        conn = self._conn()
+        c = conn.cursor()
+        c.execute("SELECT name FROM refdb_models")
+        all_names = [row[0] for row in c.fetchall()]
+        if not all_names:
+            conn.close()
+            return 0
+        c.execute("SELECT id, name FROM performers WHERE refdb_status IS NULL")
+        pending = c.fetchall()
+        updated = 0
+        for pid, name in pending:
+            status = None
+            name_lower = name.lower()
+            for n in all_names:
+                if n.lower() == name_lower:
+                    status = "matched"
+                    break
+            if status is None:
+                result = process.extractOne(name, all_names, scorer=fuzz.token_sort_ratio, score_cutoff=88)
+                if result:
+                    status = "fuzzy"
+            if status:
+                c.execute("UPDATE performers SET refdb_status = ? WHERE id = ?", (status, pid))
+                updated += 1
+        conn.commit()
+        conn.close()
+        return updated
+
+
 # ── InMemory adapter (for tests) ──────────────────────────
 
 
@@ -1043,6 +1150,7 @@ class InMemoryPerformerRepository(PerformerRepository):
         self._scenes: Dict[int, list] = {}  # performer_id -> list of dicts
         self._features: Dict[int, dict] = {}
         self._refdb_names: List[str] = []
+        self._refdb_models: Dict[int, dict] = {}
         self._non_performer_tags: Dict[int, dict] = {}
         self._insert_no_name()
 
@@ -1378,6 +1486,15 @@ class InMemoryPerformerRepository(PerformerRepository):
         for c in pid_counts.values():
             bucket = c if c <= 10 else "11+"
             item_hist[bucket] = item_hist.get(bucket, 0) + 1
+        nums = []
+        for p in self._performers.values():
+            r = p.get("rating", "")
+            try:
+                nums.append(float(r))
+            except (ValueError, TypeError):
+                pass
+        numeric_avg = round(sum(nums) / len(nums), 2) if nums else 0.0
+
         return {
             "total_performers": total_p,
             "total_items": total_i,
@@ -1385,7 +1502,45 @@ class InMemoryPerformerRepository(PerformerRepository):
             "total_scenes": scene_count,
             "rating_distribution": rating_dist,
             "item_histogram": item_hist,
+            "numeric_avg_rating": numeric_avg,
         }
+
+    # --- RefDB writes / profile images ---
+
+    def add_to_refdb(self, name: str) -> None:
+        if any(m["name"].lower() == name.lower() for m in self._refdb_models.values()):
+            return
+        mid = len(self._refdb_models) + 1
+        self._refdb_models[mid] = {"name": name, "image": None}
+        self._refdb_names.append(name)
+
+    def get_profile_image(self, name: str) -> Optional[str]:
+        if not name:
+            return None
+        for m in self._refdb_models.values():
+            if m["name"].lower() == name.lower():
+                return m["image"]
+        return None
+
+    def save_profile_image(self, model_id: int, image_url: str, local_path: str) -> None:
+        if model_id in self._refdb_models:
+            self._refdb_models[model_id]["image"] = local_path
+
+    def compute_refdb_status(self) -> int:
+        updated = 0
+        for p in self._performers.values():
+            if p.get("refdb_status") is not None:
+                continue
+            status = None
+            name_lower = p["name"].lower()
+            for n in self._refdb_names:
+                if n.lower() == name_lower:
+                    status = "matched"
+                    break
+            if status:
+                p["refdb_status"] = status
+                updated += 1
+        return updated
 
     def get_stale(self, stale_days: int = 30) -> List[dict]:
         results = []

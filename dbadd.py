@@ -163,6 +163,41 @@ def create_db(db_path):
         )
     ''')
 
+    # ── Cached profile images (written by the webapp after an analvids lookup) ──
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS performer_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            performer_id INTEGER,
+            model_id INTEGER,
+            image_url TEXT,
+            local_path TEXT,
+            type TEXT DEFAULT "profile",
+            added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # ── Performer features / scenes ──
+    # Previously had NO CREATE statement anywhere in the repo, so a fresh
+    # database would fail get_stats()/upsert_features(). Owned here now.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS performer_features (
+            performer_id INTEGER PRIMARY KEY,
+            nationality TEXT,
+            age INTEGER,
+            tags TEXT,
+            scene_count INTEGER DEFAULT 0,
+            last_scraped TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS performer_scenes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            performer_id INTEGER,
+            scene_url TEXT,
+            scene_title TEXT
+        )
+    ''')
+
     # Seed initial values if table is empty
     cursor.execute("SELECT COUNT(*) FROM non_performer_tags")
     if cursor.fetchone()[0] == 0:

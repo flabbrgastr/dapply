@@ -59,9 +59,7 @@ def test_all_routes_registered():
 
 def test_query_layer_is_importable_without_flask_running():
     # These are plain functions; importing must not require a Flask context.
-    for name in ("search_analvids", "fetch_analvids_profile", "build_stats_payload",
-                 "compute_refdb_status", "add_performer_to_refdb",
-                 "get_profile_image_for_name"):
+    for name in ("search_analvids", "fetch_analvids_profile", "build_stats_payload"):
         assert hasattr(viewer_queries, name)
 
 
