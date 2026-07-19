@@ -22,11 +22,7 @@ from bs4 import BeautifulSoup
 # ── Constants ──
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "performers.db")
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-]
+from constants import USER_AGENTS
 PER_PAGE = 12  # Models per directory page
 TOTAL_PAGES = 660  # Approximate total directory pages
 FETCH_DELAY = (2.0, 4.0)  # Min/max delay between profile fetches (seconds)

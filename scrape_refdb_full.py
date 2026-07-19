@@ -22,12 +22,7 @@ import requests
 from bs4 import BeautifulSoup
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "performers.db")
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
-]
+from constants import USER_AGENTS
 
 
 def _ensure_tables(db_path: str = DB_PATH):
@@ -253,7 +248,7 @@ def find_last_page(start: int = 600) -> int:
             if r.status_code != 200:
                 return False
             return len(re.findall(r'class="model-top__name"', r.text)) > 0
-        except:
+        except Exception:
             return False
 
     print(f"Binary searching for last page (starting from {start})...")

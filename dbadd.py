@@ -14,6 +14,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from constants import STOP
 
 
 def parse_item_date(item_date: str, crawl_ts: int) -> str:
@@ -592,15 +593,6 @@ def resolve_nonames(db_path="performers.db", dry_run=False, limit=None):
     c = conn.cursor()
 
     # Noise-Wörter (nie Teil von Performer-Namen)
-    STOP = {"fuck","fucked","fucking","fucks","gets","takes","with","and","the",
-            "her","his","their","for","after","before","while","by","in","on",
-            "at","to","of","is","are","was","were","been","being","have",
-            "has","had","do","does","did","will","would","could","should",
-            "anal","ass","pussy","cock","dick","cum","sex","hot","big",
-            "first","new","scene","xxx","hd","4k","official","behind",
-            "herself","himself","itself","into","onto","upon","from","about",
-            "teen","teens","milf","bj","bbc","dp","dap","step","only",
-            "more","info","description","others","watch","video","show"}
 
     # Performernamen laden
     c.execute("""SELECT id, name FROM performers
@@ -787,7 +779,7 @@ def main():
         for i, a in enumerate(sys.argv):
             if a.startswith("--limit=") or a.startswith("-l="):
                 try: lim = int(a.split("=", 1)[1])
-                except: pass
+                except Exception: pass
         resolve_nonames(db_file_path, dry_run=dry, limit=lim)
         return
 

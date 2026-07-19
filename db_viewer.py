@@ -674,7 +674,7 @@ def get_stats():
             AND (rating GLOB '[0-9]*' OR rating GLOB '[0-9]*.[0-9]*')
         """).fetchone()[0]
         avg_numeric = round(avg_numeric, 2) if avg_numeric else 0.0
-    except:
+    except Exception:
         avg_numeric = 0.0
     conn.close()
 
