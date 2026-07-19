@@ -220,7 +220,7 @@ class LLMClient:
                 {"role": "user", "content": f"Title: {title}\nURL slug: {slug}\n\nPerformer name:"}
             ],
             "temperature": 0,
-            "max_tokens": 48,
+            "max_tokens": 400,
             "think": False
         }, headers={"Authorization": f"Bearer {self.api_key}"},
             verify=False, timeout=timeout)
