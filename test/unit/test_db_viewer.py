@@ -7,7 +7,7 @@ No network, no writes to the real database.
 import pytest
 
 import db_viewer
-from performer_repository import SqlitePerformerRepository
+from performer_repository import InMemoryPerformerRepository, SqlitePerformerRepository
 import viewer_queries
 import viewer_rendering
 
@@ -48,13 +48,52 @@ def _registered_routes():
 
 
 def test_app_imports_and_repo_is_repository():
-    assert isinstance(db_viewer.repo, SqlitePerformerRepository)
+    # The default production app injects the SQLite adapter.
+    assert isinstance(db_viewer.app.config["REPO"], SqlitePerformerRepository)
 
 
 def test_all_routes_registered():
     registered = _registered_routes()
     missing = EXPECTED_ROUTES - registered
     assert not missing, f"missing routes: {missing}"
+
+
+def test_create_app_injects_provided_repo():
+    # Candidate C: the factory accepts an injected port, so the webapp is
+    # drivable without the production database.
+    fake = InMemoryPerformerRepository()
+    app = db_viewer.create_app(fake)
+    assert app.config["REPO"] is fake
+
+
+def test_performers_route_returns_seeded_data():
+    # End-to-end: seed the injected repo, hit the route via the test client.
+    repo = InMemoryPerformerRepository()
+    pid = repo.insert("Test Star", "9.0")
+    repo.set_validated(pid)
+    client = db_viewer.create_app(repo).test_client()
+
+    resp = client.get("/api/performers")
+    assert resp.status_code == 200
+    names = [p["name"] for p in resp.get_json()]
+    assert "Test Star" in names
+
+
+def test_stats_route_returns_numeric_avg():
+    repo = InMemoryPerformerRepository()
+    repo.insert("Star A", "9.0")
+    repo.insert("Star B", "8.0")
+    client = db_viewer.create_app(repo).test_client()
+
+    resp = client.get("/api/stats")
+    assert resp.status_code == 200
+    assert resp.get_json()["numeric_avg_rating"] == 8.5
+
+
+def test_index_route_renders():
+    client = db_viewer.create_app(InMemoryPerformerRepository()).test_client()
+    resp = client.get("/")
+    assert resp.status_code == 200
 
 
 def test_query_layer_is_importable_without_flask_running():

@@ -45,7 +45,10 @@ assumes these terms exist.
   - `SqlitePerformerRepository` — production, backed by `performers.db`.
   - `InMemoryPerformerRepository` — tests, backed by dicts.
 - The webapp (`db_viewer.py` + `viewer_queries.py`) talks to the database
-  **only** through this port; raw `sqlite3` does not appear in the webapp layer.
+  **only** through this port; it is built by `db_viewer.create_app(repo=None)`,
+  which injects the repository (defaults to `SqlitePerformerRepository`). That
+  injection is what makes the webapp testable with `InMemoryPerformerRepository`
+  through the Flask test client.
 - **ADR-0001** — the resolver must **not** create performers; performer
   creation is owned by the `dbadd` ingestion path and the web UI's confirm
   action. The repository port is the only writer.
