@@ -55,7 +55,7 @@
       <div class="add-form">
         <span style="color:var(--text2); font-size:13px;">➕ Add</span>
         <input type="text" id="new-name" placeholder="Performer name" />
-        <input type="text" id="new-rating" placeholder="Rating (A, AA+, 8…)" maxlength="10" list="rating-hints" title="Rating tiers: AAA…E (optionally +/−), or a number 0–10" />
+        <input type="text" id="new-rating" placeholder="Tag (beautiful, raw, +, ++, −, −−)" maxlength="10" list="rating-hints" title="Tags: beautiful, raw, +, ++, −, −−" />
         <button class="btn btn-primary" onclick="addPerformer()">Add</button>
       </div>
 
@@ -320,17 +320,14 @@
     <script>
       let performersData = [];
 
-      // Rating scale hints (alphabetical tiers + numeric 0–10) for <datalist>.
-      const RATING_TIERS = ["AAA","AA","A","BBB","BB","B","CCC","CC","C","DDD","DD","D","EEE","EE","E"];
+      // Tag-style hints for the rating field (kept short on purpose).
+      const TAGS = ["beautiful", "raw", "+", "++", "-", "--"];
       (function populateRatingHints() {
         const dl = document.getElementById("rating-hints");
         if (!dl) return;
-        RATING_TIERS.forEach(p => ["","+","-"].forEach(suf => {
-          const o = document.createElement("option"); o.value = p + suf; dl.appendChild(o);
-        }));
-        for (let n = 0; n <= 10; n++) {
-          const o = document.createElement("option"); o.value = String(n); dl.appendChild(o);
-        }
+        TAGS.forEach(t => {
+          const o = document.createElement("option"); o.value = t; dl.appendChild(o);
+        });
       })();
       let currentSort = { column: "name", order: "asc" };
       let currentPerformerId = null;
@@ -483,7 +480,7 @@
               : ""}
           `;
           const ratingCell = document.createElement("td");
-          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" list="rating-hints" placeholder="A / AA+ / 8" title="Rating tiers: AAA…E (optionally +/−), or a number 0–10" onchange="updateRating(${performer.id})">`;
+          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" list="rating-hints" placeholder="tag…" title="Tags: beautiful, raw, +, ++, −, −−" onchange="updateRating(${performer.id})">`;
           row.innerHTML = `
             <td style="white-space:nowrap;">${nameCell.innerHTML}</td>
             <td>${performer.aka || ""}</td>
