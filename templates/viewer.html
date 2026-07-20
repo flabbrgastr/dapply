@@ -450,12 +450,10 @@
 
       function renderPerformersTable(data) {
         const tbody = document.getElementById("performers-body");
-        tbody.innerHTML = "";
-        const fragment = document.createDocumentFragment();
-        data.forEach(performer => {
-          const row = document.createElement("tr");
-          let refdbBadge = "";
+        const ratingTitle = "Tags (comma-separated) — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake & gay (avoid) · dedup: already here as AKA · ?: dont know · !: attention, look into it · !!: priority, look into it";
+        const rows = data.map(performer => {
           const n = performer.name.replace(/'/g, "\\'");
+          let refdbBadge = "";
           if (performer.refdb_match === "fuzzy") {
             refdbBadge = `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(251,191,36,0.12);color:#fbbf24;font-size:16px;font-weight:bold;cursor:help;" title="Uncertain — similar name found in refdb">⚠</span>`;
           } else if (performer.refdb_match === "unmatched" && !performer.validated) {
@@ -463,28 +461,25 @@
           }
           const nat = performer.nationality || "";
           const age = performer.age != null ? performer.age : "";
-          const nameCell = document.createElement("td");
-          nameCell.innerHTML = `
-            <a href="${BASE}/#performer-${performer.id}" target="_blank">${performer.name}</a>
-            ${performer.refdb_match === "unmatched" || performer.refdb_match === "fuzzy"
-              ? `<button onclick="confirmPerformer(${performer.id}, '${performer.name.replace(/'/g, "\\'")}')" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px;" title="Confirm or correct name">✎</button>`
-              : ""}
-          `;
-          const ratingCell = document.createElement("td");
-          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="80" placeholder="tags, comma-separated…" title="Tags (comma-separated) — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake &amp; gay (avoid) · dedup: already here as AKA · ?: dont know · !: attention, look into it · !!: priority, look into it" onchange="updateRating(${performer.id})">`;
-          row.innerHTML = `
-            <td style="white-space:nowrap;">${nameCell.innerHTML}</td>
-            <td>${performer.aka || ""}</td>
-            <td>${refdbBadge}</td>
-            <td>${nat}</td>
-            <td>${age}</td>
-            <td>${performer.crawls || 0}</td>
-          `;
-          row.appendChild(ratingCell);
-          row.innerHTML += `<td><button class="row-x" onclick="deletePerformer(${performer.id})" title="Delete performer">×</button></td>`;
-          fragment.appendChild(row);
+          const nameHtml = `<a href="${BASE}/#performer-${performer.id}" target="_blank">${performer.name}</a>` +
+            (performer.refdb_match === "unmatched" || performer.refdb_match === "fuzzy"
+              ? `<button onclick="confirmPerformer(${performer.id}, '${n}')" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px;" title="Confirm or correct name">✎</button>`
+              : "");
+          const ratingVal = String(performer.rating == null ? "" : performer.rating)
+            .replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+          const ratingHtml = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${ratingVal}" maxlength="80" placeholder="tags, comma-separated…" title="${ratingTitle}" onchange="updateRating(${performer.id})">`;
+          return `<tr>` +
+            `<td style="white-space:nowrap;">${nameHtml}</td>` +
+            `<td>${performer.aka || ""}</td>` +
+            `<td>${refdbBadge}</td>` +
+            `<td>${nat}</td>` +
+            `<td>${age}</td>` +
+            `<td>${performer.crawls || 0}</td>` +
+            `<td>${ratingHtml}</td>` +
+            `<td><button class="row-x" onclick="deletePerformer(${performer.id})" title="Delete performer">×</button></td>` +
+            `</tr>`;
         });
-        tbody.appendChild(fragment);
+        tbody.innerHTML = rows.join("");
       }
 
       function hasContent(p) {
