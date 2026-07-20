@@ -87,8 +87,8 @@
             🔞 DAP only
           </label>
           <label style="margin-left:15px; font-size:13px;">
-            <input type="checkbox" id="hide-noinfo" onchange="renderFiltered()" checked>
-            Hide no‑info
+            <input type="checkbox" id="hide-novideos" onchange="renderFiltered()" checked>
+            Hide no videos
           </label>
         </div>
         <div>
@@ -499,22 +499,16 @@
         tbody.appendChild(fragment);
       }
 
-      function hasInfo(p) {
-        return !!(
-          (p.rating && String(p.rating).trim() !== "") ||
-          (p.nationality && String(p.nationality).trim() !== "") ||
-          (p.age != null && p.age !== "" && p.age !== 0) ||
-          (p.crawls > 0) ||
-          (p.aka && String(p.aka).trim() !== "")
-        );
+      function hasContent(p) {
+        return (p.item_count || 0) > 0;
       }
 
       function renderFiltered() {
         if (!performersData) return;
         let list = performersData;
-        if (document.getElementById("hide-noinfo") &&
-            document.getElementById("hide-noinfo").checked) {
-          list = list.filter(hasInfo);
+        if (document.getElementById("hide-novideos") &&
+            document.getElementById("hide-novideos").checked) {
+          list = list.filter(hasContent);
         }
         list = sortData(list, currentSort.column, currentSort.order);
         renderPerformersTable(list);

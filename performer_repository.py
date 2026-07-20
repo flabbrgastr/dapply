@@ -332,9 +332,15 @@ class SqlitePerformerRepository(PerformerRepository):
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         query = f"""
-            SELECT p.*, pf.nationality, pf.age, pf.tags, pf.scene_count, p.refdb_status
+            SELECT p.*, pf.nationality, pf.age, pf.tags, pf.scene_count,
+                   p.refdb_status,
+                   COALESCE(ic.cnt, 0) AS item_count
             FROM performers p
             LEFT JOIN performer_features pf ON p.id = pf.performer_id
+            LEFT JOIN (
+                SELECT performer_id, COUNT(*) AS cnt
+                FROM items GROUP BY performer_id
+            ) ic ON ic.performer_id = p.id
             {where}
             ORDER BY p.{sort_by} {sort_order}
         """
@@ -349,6 +355,7 @@ class SqlitePerformerRepository(PerformerRepository):
             d["age"] = d.pop("age", None)
             d["tags"] = d.pop("tags", None) or ""
             d["scene_count"] = d.pop("scene_count", None) or 0
+            d["item_count"] = d.pop("item_count", 0) or 0
             d["refdb_match"] = d.pop("refdb_status", None) or "unmatched"
             results.append(d)
 
@@ -1188,6 +1195,10 @@ class InMemoryPerformerRepository(PerformerRepository):
                 d["tags"] = ""
                 d["scene_count"] = 0
             d["refdb_match"] = d.pop("refdb_status", None) or "unmatched"
+            d["item_count"] = sum(
+                1 for it in self._items.values()
+                if it.get("performer_id") == p["id"]
+            )
             results.append(d)
 
         reverse = sort_order == "desc"
