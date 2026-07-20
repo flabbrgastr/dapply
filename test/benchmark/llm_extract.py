@@ -210,7 +210,8 @@ class LLMClient:
 
     def extract_name(self, model_id: str, title: str, slug: str = "",
                      system_prompt: str = DEFAULT_PROMPT,
-                     timeout: int = 20) -> Tuple[str, float]:
+                     timeout: int = 20, think: bool = False,
+                     max_tokens: int = 400) -> Tuple[str, float]:
         """Call LLM to extract a performer name from a title."""
         t0 = time.time()
         resp = requests.post(self.api_url, json={
@@ -220,8 +221,8 @@ class LLMClient:
                 {"role": "user", "content": f"Title: {title}\nURL slug: {slug}\n\nPerformer name:"}
             ],
             "temperature": 0,
-            "max_tokens": 400,
-            "think": False
+            "max_tokens": max_tokens,
+            "think": think
         }, headers={"Authorization": f"Bearer {self.api_key}"},
             verify=False, timeout=timeout)
 
@@ -253,12 +254,15 @@ class ExtractGroundBenchmark:
         return cases
 
     def run(self, model_id: str, cases: List[TestCase],
-            system_prompt: str = DEFAULT_PROMPT) -> List[ItemResult]:
+            system_prompt: str = DEFAULT_PROMPT, think: bool = False,
+            max_tokens: int = 400) -> List[ItemResult]:
         results = []
         for i, case in enumerate(cases):
             result = ItemResult(title=case.title, expected=case.expected)
             try:
-                extracted, t = self.llm.extract_name(model_id, case.title, case.slug, system_prompt)
+                extracted, t = self.llm.extract_name(
+                    model_id, case.title, case.slug, system_prompt,
+                    think=think, max_tokens=max_tokens)
                 result.extracted = extracted
                 result.time = t
                 result.grounding = self.db.ground(extracted)
@@ -325,6 +329,10 @@ def main():
     parser.add_argument("--quick", "-q", action="store_true")
     parser.add_argument("--show", "-s", type=int, default=5, help="Show N details")
     parser.add_argument("--output", "-o", help="Save results JSON")
+    parser.add_argument("--think", action="store_true",
+                        help="Enable model reasoning (needs a large --max-tokens)")
+    parser.add_argument("--max-tokens", type=int, default=400,
+                        help="Max completion tokens (reasoning models need >~300)")
     args = parser.parse_args()
 
     benchmark = ExtractGroundBenchmark()
@@ -341,7 +349,8 @@ def main():
     print(f"Loaded {len(cases)} test cases")
 
     for model_id in models:
-        results = benchmark.run(model_id, cases)
+        results = benchmark.run(model_id, cases, think=args.think,
+                                max_tokens=args.max_tokens)
         benchmark.print_results(model_id, results, show=args.show)
 
         if args.output:
