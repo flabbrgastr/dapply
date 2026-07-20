@@ -21,6 +21,8 @@ from dbadd import create_db
 from performer_repository import PerformerRepository, SqlitePerformerRepository
 from viewer_queries import build_stats_payload
 from analvids_source import AnalvidsSource, ScrapingAnalvidsSource
+import logging
+logger = logging.getLogger(__name__)
 
 
 def create_app(repo: Optional[PerformerRepository] = None,
@@ -361,9 +363,12 @@ def create_app(repo: Optional[PerformerRepository] = None,
 app = create_app()
 
 
+from logutils import setup_logging
+
 if __name__ == "__main__":
+    setup_logging()
     create_db("performers.db")
     updated = app.config["REPO"].compute_refdb_status()
     if updated > 0:
-        print(f"  ~ refdb_status computed for {updated} performers")
+        logger.info(f'  ~ refdb_status computed for {updated} performers')
     app.run(debug=False, host='0.0.0.0', port=8009)

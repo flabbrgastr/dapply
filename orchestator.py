@@ -223,7 +223,7 @@ class Orchestator:
         )
 
         if not urls_to_process:
-            print("Nothing to scrape.")
+            logger.info('Nothing to scrape.')
             return
 
         self._handoff_to_scraper(
@@ -397,10 +397,10 @@ class Orchestator:
                     parts.append(f"{s}")
             line = "  " + "  ".join(parts)
             if not force_newline:
-                sys.stdout.write(line + "\r")
+                logger.info(line + '\r')
                 sys.stdout.flush()
             else:
-                sys.stdout.write(line + "\n")
+                logger.info(line + '\n')
 
         _show_progress()
 
@@ -488,7 +488,7 @@ class Orchestator:
                         names += "..."
                     names += ")"
                 summaries.append(f"{site}: {n} new{names} ✓")
-        print("  " + "  ".join(summaries))
+        logger.info('  ' + '  '.join(summaries))
 
     def _process_scrape_response(self, response, tag="X"):
         """Process a single scrape response and update status."""
@@ -730,15 +730,15 @@ def main():
         from dbadd import add_performers_from_csv
         from extractor import process_html_files
 
-        print(f"Extracting from {args.extract}...")
+        logger.info(f'Extracting from {args.extract}...')
         process_html_files(args.extract, "extracted.csv")
-        print("Updating database...")
+        logger.info('Updating database...')
         add_performers_from_csv("extracted.csv", "performers.db")
         return
 
     site = args.site or "all sites"
     limit = f"{args.limit} pages" if args.limit else "all pages"
-    print(f"Scraping {limit} from {site}...")
+    logger.info(f'Scraping {limit} from {site}...')
     orchestator.start_scraping_workflow(
         max_concurrent=1,
         delay_between_requests=args.delay,
@@ -747,8 +747,11 @@ def main():
         stop_on_no_new=args.stop_on_old,
     )
 
-    print(f"Done — https://booksi.duckdns.org:8007/performers/")
+    logger.info(f'Done — https://booksi.duckdns.org:8007/performers/')
 
+
+from logutils import setup_logging
 
 if __name__ == "__main__":
+    setup_logging()
     main()

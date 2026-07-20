@@ -38,6 +38,8 @@ FAST_BATCH = 5000
 
 # ── STOP words (never part of a performer name) ────────────
 from constants import STOP, COMMON_NOISE
+import logging
+logger = logging.getLogger(__name__)
 
 # Common English words that should never be a performer name by themselves.
 # If ALL words in an LLM-extracted candidate are in this set and the candidate
@@ -275,11 +277,11 @@ def phase2_hybrid_assign(
         # Count as skipped if no stage matched
         skipped += 1
         if (i + 1) % 1000 == 0:
-            print(f"    Progress: {i+1}/{len(items)} items, {assigned} assigned (S1={stage1}, S2={stage2}, S3={stage3})")
+            logger.info(f'    Progress: {i + 1}/{len(items)} items, {assigned} assigned (S1={stage1}, S2={stage2}, S3={stage3})')
             repo._conn().commit()
 
     repo._conn().commit()
-    print(f"\n  Hybrid results: {assigned} assigned (refdb-slug={stage1}, fuzzy-verified={stage2}, llm={stage3}), {skipped} skipped")
+    logger.info(f'\n  Hybrid results: {assigned} assigned (refdb-slug={stage1}, fuzzy-verified={stage2}, llm={stage3}), {skipped} skipped')
     return assigned
 
 
@@ -625,11 +627,11 @@ def review_item(item_id, title, url, fuzzy_suggestions, llm_result,
     domain = "analvids" if "analvids" in url else "sxyprn" if "sxyprn" in url else "other"
     llm_raw, llm_found = llm_result if llm_result else (None, [])
 
-    print(f"\n{'=' * 65}")
-    print(f"  [{item_index}/{total}] {domain}")
-    print(f"  Title: {title[:120]}")
-    print(f"  URL:   {url[:90]}")
-    print(f"{'=' * 65}")
+    logger.info(f"\n{'=' * 65}")
+    logger.info(f'  [{item_index}/{total}] {domain}')
+    logger.info(f'  Title: {title[:120]}')
+    logger.info(f'  URL:   {url[:90]}')
+    logger.info(f"{'=' * 65}")
 
     suggestions = list(fuzzy_suggestions)
     for n in llm_found:
@@ -637,21 +639,21 @@ def review_item(item_id, title, url, fuzzy_suggestions, llm_result,
             suggestions.append((n, 90, "llm+db"))
 
     if fuzzy_suggestions:
-        print(f"\n  📐 Match suggestions:")
+        logger.info(f'\n  📐 Match suggestions:')
         for i, (name, score, source) in enumerate(fuzzy_suggestions, 1):
-            print(f"    [{i}] {name:30s} (score={score}, {source})")
+            logger.info(f'    [{i}] {name:30s} (score={score}, {source})')
     else:
-        print(f"\n  📐 No DB match found")
+        logger.info(f'\n  📐 No DB match found')
 
     if llm_raw:
-        print(f"  🤖 LLM raw: {llm_raw[:60]}")
+        logger.info(f'  🤖 LLM raw: {llm_raw[:60]}')
         if llm_found:
             for n in llm_found:
                 if not any(n == s[0] for s in fuzzy_suggestions):
                     idx = len(suggestions)
-                    print(f"    → In DB: [{idx}] {n}")
+                    logger.info(f'    → In DB: [{idx}] {n}')
         else:
-            print(f"    → Not found in DB")
+            logger.info(f'    → Not found in DB')
 
     while True:
         choices = ""
@@ -662,14 +664,14 @@ def review_item(item_id, title, url, fuzzy_suggestions, llm_result,
         try:
             inp = input(f"\n  ❯ {choices}: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
-            print()
+            logger.info("")
             return None
 
         if inp == "q":
-            print("  Quitting.")
+            logger.info('  Quitting.')
             sys.exit(0)
         if inp == "s":
-            print("  Skipped.")
+            logger.info('  Skipped.')
             return None
         if inp == "m":
             name = input("  Enter performer name: ").strip()
@@ -679,11 +681,11 @@ def review_item(item_id, title, url, fuzzy_suggestions, llm_result,
                 result = process.extractOne(name, known_names, scorer=fuzz.token_sort_ratio, score_cutoff=70)
                 if result:
                     matched_name, score = result
-                    print(f"  → Fuzzy matched '{matched_name}' (score={score})")
+                    logger.info(f"  → Fuzzy matched '{matched_name}' (score={score})")
                     yn = input("  Accept? [Y/n]: ").strip().lower()
                     if yn != "n":
                         return known_ids[matched_name]
-                print(f"  ⚠  '{name}' not found in DB. Skipping.")
+                logger.info(f"  ⚠  '{name}' not found in DB. Skipping.")
                 return None
             continue
         if inp.isdigit() and suggestions:
@@ -692,15 +694,15 @@ def review_item(item_id, title, url, fuzzy_suggestions, llm_result,
                 return known_ids[suggestions[idx][0]]
         if inp and inp not in ("", "s", "q", "m"):
             if inp in known_ids:
-                print(f"  → Exact match for '{inp}'")
+                logger.info(f"  → Exact match for '{inp}'")
                 return known_ids[inp]
             result = process.extractOne(inp, known_names, scorer=fuzz.token_sort_ratio, score_cutoff=70)
             if result:
                 matched_name, score = result
-                print(f"  → Fuzzy matched '{matched_name}' (score={score})")
+                logger.info(f"  → Fuzzy matched '{matched_name}' (score={score})")
                 if input("  Accept? [Y/n]: ").strip().lower() != "n":
                     return known_ids[matched_name]
-        print("  Invalid choice.")
+        logger.info('  Invalid choice.')
 
 
 # ═══════════════════════════════════════════════════════════
@@ -710,7 +712,7 @@ def review_item(item_id, title, url, fuzzy_suggestions, llm_result,
 def apply_all_results(repo: SqlitePerformerRepository):
     results = load_results()
     if not results:
-        print("No saved results found.")
+        logger.info('No saved results found.')
         return
     applied = 0
     for r in results:
@@ -721,7 +723,7 @@ def apply_all_results(repo: SqlitePerformerRepository):
         repo.assign_item(item_id, pid)
         repo.add_url(pid, r.get("item_url", ""))
         applied += 1
-    print(f"✅ Applied {applied} assignments to DB.")
+    logger.info(f'✅ Applied {applied} assignments to DB.')
 
 
 # ═══════════════════════════════════════════════════════════
@@ -745,19 +747,19 @@ def show_stats(repo: SqlitePerformerRepository):
     scene_hits = sum(1 for r in results if r["method"] == "scene")
     slug_hits = sum(1 for r in results if r["method"].startswith("slug"))
 
-    print(f"\n📊 NO_NAME items: {total}")
-    print(f"   sxyprn:    {sxyprn:6d}")
-    print(f"   analvids:  {analvids:6d}")
+    logger.info(f'\n📊 NO_NAME items: {total}')
+    logger.info(f'   sxyprn:    {sxyprn:6d}')
+    logger.info(f'   analvids:  {analvids:6d}')
     if other:
-        print(f"   other:     {other:6d}")
-    print(f"")
-    print(f"📝 Results file: {len(results)} total")
-    print(f"   Assigned:  {assigned:6d}  (scene={scene_hits}, slug={slug_hits})")
-    print(f"   Skipped:   {skipped:6d}")
-    print(f"")
-    print(f"🔍 Scene URLs in DB: {len(scene_map)}")
-    print(f"💡 Remaining: {total}")
-    print()
+        logger.info(f'   other:     {other:6d}')
+    logger.info(f'')
+    logger.info(f'📝 Results file: {len(results)} total')
+    logger.info(f'   Assigned:  {assigned:6d}  (scene={scene_hits}, slug={slug_hits})')
+    logger.info(f'   Skipped:   {skipped:6d}')
+    logger.info(f'')
+    logger.info(f'🔍 Scene URLs in DB: {len(scene_map)}')
+    logger.info(f'💡 Remaining: {total}')
+    logger.info("")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -910,7 +912,7 @@ def run_llm_pass(repo, llm, all_items, known_ids, known_names,
 
         if (i + 1) % 100 == 0:
             repo._conn().commit()
-            print(f"    LLM pass: {i+1}/{len(all_items)} items, {assigned} assigned")
+            logger.info(f'    LLM pass: {i + 1}/{len(all_items)} items, {assigned} assigned')
 
     repo._conn().commit()
     return assigned
@@ -970,7 +972,7 @@ def main():
     # ── Phase 1: Fast auto-assign ──
     if args.fast:
         # Load all unmatched items
-        print("📦 Loading unmatched items...")
+        logger.info('📦 Loading unmatched items...')
         all_items = repo.get_unmatched_items(no_name_id, limit=None)
         total = len(all_items)
 
@@ -979,18 +981,18 @@ def main():
             processed = get_processed_ids()
             old_count = len(all_items)
             all_items = [i for i in all_items if i["id"] not in processed]
-            print(f"📋 Resuming — skipping {len(processed)} already processed items ({old_count} → {len(all_items)})")
+            logger.info(f'📋 Resuming — skipping {len(processed)} already processed items ({old_count} → {len(all_items)})')
 
         if args.batch > 0 and len(all_items) > args.batch:
             all_items = all_items[:args.batch]
 
         if not all_items:
-            print("✅ No items to process!")
+            logger.info('✅ No items to process!')
             return
 
         # Dry-run: just count potential matches
         if args.dry_run:
-            print(f"📋 Counting potential fast-matches among {len(all_items)} items...")
+            logger.info(f'📋 Counting potential fast-matches among {len(all_items)} items...')
             t0 = time.time()
             slug_hits = 0
             scene_hits = 0
@@ -1003,54 +1005,54 @@ def main():
                     slug_hits += 1
             elapsed = time.time() - t0
             total_hits = scene_hits + slug_hits
-            print(f"\n📊 Potential fast-matches: {total_hits}/{len(all_items)} ({total_hits/max(len(all_items),1)*100:.1f}%)")
-            print(f"   Scene match: {scene_hits}")
-            print(f"   Slug match:  {slug_hits}")
-            print(f"   No match:    {len(all_items) - total_hits}")
-            print(f"   (computed in {elapsed:.1f}s)")
+            logger.info(f'\n📊 Potential fast-matches: {total_hits}/{len(all_items)} ({total_hits / max(len(all_items), 1) * 100:.1f}%)')
+            logger.info(f'   Scene match: {scene_hits}')
+            logger.info(f'   Slug match:  {slug_hits}')
+            logger.info(f'   No match:    {len(all_items) - total_hits}')
+            logger.info(f'   (computed in {elapsed:.1f}s)')
             return
 
-        print(f"📋 Fast-matching {len(all_items)} items (multi-word slug only)...")
+        logger.info(f'📋 Fast-matching {len(all_items)} items (multi-word slug only)...')
         t0 = time.time()
         assigned = phase1_fast_auto_assign(repo, all_items, known_ids, multi_slugs, single_slugs, scene_map)
         elapsed = time.time() - t0
-        print(f"\n✅ Phase 1 done: {assigned}/{len(all_items)} assigned in {elapsed:.1f}s")
-        print(f"   Results saved to {RESULTS_FILE}")
-        print(f"   Run with --stats to see remaining, --deep for interactive review.")
+        logger.info(f'\n✅ Phase 1 done: {assigned}/{len(all_items)} assigned in {elapsed:.1f}s')
+        logger.info(f'   Results saved to {RESULTS_FILE}')
+        logger.info(f'   Run with --stats to see remaining, --deep for interactive review.')
         return
 
     # ── Phase 2: Deep interactive review ──
     if args.deep:
-        print("📦 Loading unmatched items...")
+        logger.info('📦 Loading unmatched items...')
         all_items = repo.get_unmatched_items(no_name_id, limit=None)
         if args.resume:
             processed = get_processed_ids()
             all_items = [i for i in all_items if i["id"] not in processed]
-            print(f"📋 Resuming — skipping {len(processed)} processed items")
+            logger.info(f'📋 Resuming — skipping {len(processed)} processed items')
         if args.batch > 0 and len(all_items) > args.batch:
             all_items = all_items[:args.batch]
 
         total = len(all_items)
         if total == 0:
-            print("✅ No items to review!")
+            logger.info('✅ No items to review!')
             return
 
-        print(f"\n🔍 Deep-matching {total} items (fuzzy + {'LLM' if not args.no_llm else 'no LLM'})...")
+        logger.info(f"\n🔍 Deep-matching {total} items (fuzzy + {('LLM' if not args.no_llm else 'no LLM')})...")
 
         # Pre-score all items with full matching (fuzzy included)
-        print("  Pre-computing matches...")
+        logger.info('  Pre-computing matches...')
         scored = []
         for i, item in enumerate(all_items):
-            sys.stdout.write(f"\r  Scoring [{i+1}/{total}]...")
+            logger.info(f'\r  Scoring [{i + 1}/{total}]...')
             sys.stdout.flush()
             url = item.get("item_url", "") or ""
             title = item.get("title", "") or ""
             sug = match_item(url, title, multi_slugs, single_slugs, known_names, known_ids)
             scored.append({**item, "fuzzy_suggestions": sug or []})
-        print()
+        logger.info("")
 
         # Interactive review
-        print(f"\n  Reviewing {total} items...")
+        logger.info(f'\n  Reviewing {total} items...')
         for i, s in enumerate(scored):
             llm_suggestion = None
             if not s["fuzzy_suggestions"] and not args.no_llm:
@@ -1091,35 +1093,35 @@ def main():
                 repo.assign_item(s["id"], pid)
                 repo.add_url(pid, s.get("item_url", ""))
                 save_result(s["id"], pid, pname, s.get("item_url", ""), s.get("title", "") or "", "review")
-                print(f"  ✅ Assigned '{pname}'")
+                logger.info(f"  ✅ Assigned '{pname}'")
             else:
                 save_result(s["id"], None, None, s.get("item_url", ""), s.get("title", "") or "", "skip")
 
         total_assigned = sum(1 for r in load_results() if r["performer_id"] is not None)
-        print(f"\n{'=' * 65}")
-        print(f"  Session done. Total assigned so far: {total_assigned}")
+        logger.info(f"\n{'=' * 65}")
+        logger.info(f'  Session done. Total assigned so far: {total_assigned}')
         return
 
     # ── Default: show usage ──
     # ── Phase 3: Hybrid pipeline ──
     if args.hybrid:
-        print("📦 Loading unmatched items...")
+        logger.info('📦 Loading unmatched items...')
         all_items = repo.get_unmatched_items(no_name_id, limit=None)
         if args.resume:
             processed = get_processed_ids()
             all_items = [i for i in all_items if i["id"] not in processed]
-            print(f"📋 Resuming — skipping {len(processed)} processed items")
+            logger.info(f'📋 Resuming — skipping {len(processed)} processed items')
         if args.batch > 0 and len(all_items) > args.batch:
             all_items = all_items[:args.batch]
 
         if not all_items:
-            print("✅ No items to process!")
+            logger.info('✅ No items to process!')
             return
 
-        print(f"📋 Hybrid pipeline on {len(all_items)} items (refdb → fuzzy → LLM)...")
-        print("📦 Loading refdb model names...")
+        logger.info(f'📋 Hybrid pipeline on {len(all_items)} items (refdb → fuzzy → LLM)...')
+        logger.info('📦 Loading refdb model names...')
         refdb_multi, refdb_single = load_refdb_slugs(repo)
-        print(f"   RefDB multi-word: {len(refdb_multi)}, single-word: {len(refdb_single)}")
+        logger.info(f'   RefDB multi-word: {len(refdb_multi)}, single-word: {len(refdb_single)}')
 
         t0 = time.time()
         assigned = phase2_hybrid_assign(
@@ -1129,40 +1131,43 @@ def main():
             llm,
         )
         elapsed = time.time() - t0
-        print(f"\n✅ Phase 3 done: {assigned}/{len(all_items)} assigned in {elapsed:.1f}s")
-        print(f"   Results saved to {RESULTS_FILE}")
-        print(f"   Run with --stats to see remaining.")
+        logger.info(f'\n✅ Phase 3 done: {assigned}/{len(all_items)} assigned in {elapsed:.1f}s')
+        logger.info(f'   Results saved to {RESULTS_FILE}')
+        logger.info(f'   Run with --stats to see remaining.')
         return
 
     # ── Stage 3-only: LLM pass on hard remaining items ──
     if args.llm:
-        print("📦 Loading unmatched items...")
+        logger.info('📦 Loading unmatched items...')
         all_items = repo.get_unmatched_items(no_name_id, limit=None)
         if args.resume:
             processed = get_processed_ids()
             all_items = [i for i in all_items if i["id"] not in processed]
-            print(f"📋 Resuming — skipping {len(processed)} processed items")
+            logger.info(f'📋 Resuming — skipping {len(processed)} processed items')
         if args.batch > 0 and len(all_items) > args.batch:
             all_items = all_items[:args.batch]
 
         if not all_items:
-            print("✅ No items to process!")
+            logger.info('✅ No items to process!')
             return
 
-        print(f"🤖 LLM pass on {len(all_items)} items (open-ended extraction)...")
-        print("📦 Loading refdb model names...")
+        logger.info(f'🤖 LLM pass on {len(all_items)} items (open-ended extraction)...')
+        logger.info('📦 Loading refdb model names...')
         refdb_multi, refdb_single = load_refdb_slugs(repo)
         t0 = time.time()
         assigned = 0
 
         assigned = run_llm_pass(repo, llm, all_items, known_ids, known_names, refdb_multi, refdb_single)
         elapsed = time.time() - t0
-        print(f"\n🤖 LLM pass done: {assigned}/{len(all_items)} assigned in {elapsed:.1f}s")
+        logger.info(f'\n🤖 LLM pass done: {assigned}/{len(all_items)} assigned in {elapsed:.1f}s')
         return
 
     parser.print_help()
-    print("\n\nRun --stats to see current state, --fast to auto-assign, --hybrid for refdb+fuzzy+LLM.")
+    logger.info('\n\nRun --stats to see current state, --fast to auto-assign, --hybrid for refdb+fuzzy+LLM.')
 
+
+from logutils import setup_logging
 
 if __name__ == "__main__":
+    setup_logging()
     main()

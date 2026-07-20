@@ -18,6 +18,8 @@ from enum import Enum
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import re
+import logging
+logger = logging.getLogger(__name__)
 
 
 class ScrapeResult(Enum):
@@ -597,17 +599,17 @@ class ScraperModule:
             try:
                 import shutil
                 shutil.rmtree(old_dir)
-                print(f"Removed old crawl directory: {old_dir}")
+                logger.info(f'Removed old crawl directory: {old_dir}')
             except Exception as e:
-                print(f"Error removing {old_dir}: {e}")
+                logger.info(f'Error removing {old_dir}: {e}')
 
 
 def main():
     """
     Simple test for the scraper module.
     """
-    print("Testing Scraper Module")
-    print("=" * 30)
+    logger.info('Testing Scraper Module')
+    logger.info('=' * 30)
 
     # Test with a custom crawl name
     scraper = ScraperModule(delay_between_requests=0.1, crawl_name="test_crawl")
@@ -626,21 +628,24 @@ def main():
         test_urls[2]: "status_tests"
     }
 
-    print(f"Scraping {len(test_urls)} test URLs...")
+    logger.info(f'Scraping {len(test_urls)} test URLs...')
     results = scraper.scrape_batch(test_urls, max_concurrent=2, url_config_names=url_config_names)
 
     for i, result in enumerate(results):
-        print(f"\nResult {i+1}:")
-        print(f"  URL: {result.url}")
-        print(f"  Status: {result.status_code}")
-        print(f"  Result: {result.result.value}")
-        print(f"  Response Time: {result.response_time:.2f}s")
-        print(f"  Config: {result.config_name}")
+        logger.info(f'\nResult {i + 1}:')
+        logger.info(f'  URL: {result.url}')
+        logger.info(f'  Status: {result.status_code}')
+        logger.info(f'  Result: {result.result.value}')
+        logger.info(f'  Response Time: {result.response_time:.2f}s')
+        logger.info(f'  Config: {result.config_name}')
         if result.filename:
-            print(f"  Saved to: {result.filename}")
+            logger.info(f'  Saved to: {result.filename}')
         if result.error_message:
-            print(f"  Error: {result.error_message}")
+            logger.info(f'  Error: {result.error_message}')
 
+
+from logutils import setup_logging
 
 if __name__ == "__main__":
+    setup_logging()
     main()

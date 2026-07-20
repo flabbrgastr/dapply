@@ -147,24 +147,24 @@ def fetch_profiles(
     total = len(profiles)
 
     if total == 0:
-        print("✓ Alle Performer-Profile sind aktuell (jünger als 30 Tage).")
+        logger.info('✓ Alle Performer-Profile sind aktuell (jünger als 30 Tage).')
         return
 
     if max_profiles:
         profiles = profiles[:max_profiles]
 
-    print(f"📥 Scrape {len(profiles)}/{total} Performer-Profile...")
-    print(f"   (Verzögerung {delay_range[0]}-{delay_range[1]}s zufällig)\n")
+    logger.info(f'📥 Scrape {len(profiles)}/{total} Performer-Profile...')
+    logger.info(f'   (Verzögerung {delay_range[0]}-{delay_range[1]}s zufällig)\n')
 
     scraped = 0
     errors = 0
 
     for i, prof in enumerate(profiles, 1):
-        print(f"  [{i}/{len(profiles)}] {prof['name']} ... ", end="", flush=True)
+        logger.info(f"  [{i}/{len(profiles)}] {prof['name']} ... ")
 
         data = _scrape_profile(prof["url"])
         if data is None:
-            print("❌")
+            logger.info('❌')
             errors += 1
             time.sleep(random.uniform(*delay_range))
             continue
@@ -203,16 +203,19 @@ def fetch_profiles(
         # Compact line
         age_str = str(data['age']) if data['age'] is not None else "?"
         aka_str = f" AKA: {', '.join(data['akas'])}" if data['akas'] else ""
-        print(f"✓ {data['nationality']:12s} {age_str:>2s}  ({len(data['tags'])} tags, {data['scene_count']} scenes){aka_str}")
+        logger.info(f"✓ {data['nationality']:12s} {age_str:>2s}  ({len(data['tags'])} tags, {data['scene_count']} scenes){aka_str}")
 
         if i < len(profiles):
             time.sleep(random.uniform(*delay_range))
 
     # Summary
     if scraped:
-        print(f"\n✅ {scraped} Profile gescraped, {errors} Fehler")
-        print(f"   Daten in performer_features + performer_scenes Tabellen.")
+        logger.info(f'\n✅ {scraped} Profile gescraped, {errors} Fehler')
+        logger.info(f'   Daten in performer_features + performer_scenes Tabellen.')
 
+
+from logutils import setup_logging
 
 if __name__ == "__main__":
+    setup_logging()
     fetch_profiles()

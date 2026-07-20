@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "performers.db")
 from constants import USER_AGENTS
+logger = logging.getLogger(__name__)
 PER_PAGE = 12  # Models per directory page
 TOTAL_PAGES = 660  # Approximate total directory pages
 FETCH_DELAY = (2.0, 4.0)  # Min/max delay between profile fetches (seconds)
@@ -168,18 +169,18 @@ def scrape_directory(
     new_images = 0
     errors = 0
 
-    print(f"\n📋 Scraping {total} directory pages (page {start_page}-{end_page})...\n")
+    logger.info(f'\n📋 Scraping {total} directory pages (page {start_page}-{end_page})...\n')
 
     for i, url in enumerate(urls, 1):
         page_num = start_page + i - 1
-        sys.stdout.write(f"\r  [{i}/{total}] Page {page_num} ... ")
+        logger.info(f'\r  [{i}/{total}] Page {page_num} ... ')
         sys.stdout.flush()
 
         try:
             ua = random.choice(USER_AGENTS)
             resp = requests.get(url, headers={"User-Agent": ua}, timeout=20)
             if resp.status_code != 200:
-                print(f"HTTP {resp.status_code}")
+                logger.info(f'HTTP {resp.status_code}')
                 errors += 1
                 time.sleep(delay)
                 continue
@@ -205,13 +206,13 @@ def scrape_directory(
             conn.commit()
 
         except Exception as e:
-            print(f"Error: {e}")
+            logger.info(f'Error: {e}')
             errors += 1
 
         time.sleep(delay)
 
     conn.close()
-    print(f"\n✅ Done: {scraped} pages, {new_names} new models, {new_images} new images, {errors} errors")
+    logger.info(f'\n✅ Done: {scraped} pages, {new_names} new models, {new_images} new images, {errors} errors')
 
 
 def _save_thumbnail(model_id: int, image_url: str) -> Optional[str]:
@@ -269,10 +270,10 @@ def fetch_all_images(
 
     total = len(pending)
     if total == 0:
-        print("✓ All models already have images.")
+        logger.info('✓ All models already have images.')
         return
 
-    print(f"\n📥 Fetching images for {total} models...")
+    logger.info(f'\n📥 Fetching images for {total} models...')
 
     # Strategy: fetch directory pages which contain multiple model images
     # We need to know which page each model is on. Since models are alphabetical,
@@ -285,7 +286,7 @@ def fetch_all_images(
         last_page = min(first_page + max_pages - 1, TOTAL_PAGES)
 
     pages_to_fetch = list(range(first_page, last_page + 1))
-    print(f"  Scanning {len(pages_to_fetch)} directory pages with {max_workers} workers...")
+    logger.info(f'  Scanning {len(pages_to_fetch)} directory pages with {max_workers} workers...')
 
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -343,7 +344,7 @@ def fetch_all_images(
         batch = pages_to_fetch[batch_start:batch_start + batch_size]
         batch_num = batch_start // batch_size + 1
         total_batches = (len(pages_to_fetch) + batch_size - 1) // batch_size
-        print(f"\r  Batch {batch_num}/{total_batches} (pages {batch[0]}-{batch[-1]}) ... ", end="", flush=True)
+        logger.info(f'\r  Batch {batch_num}/{total_batches} (pages {batch[0]}-{batch[-1]}) ... ')
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(fetch_page, p): p for p in batch}
@@ -359,8 +360,8 @@ def fetch_all_images(
         time.sleep(0.5)
 
     conn.close()
-    print(f"\n✅ Done: {new_images} new images, {errors} errors")
-    print(f"   Total images: {new_images + conn.execute('SELECT COUNT(*) FROM performer_images').fetchone()[0] if False else '? (reconnect needed)'}")
+    logger.info(f'\n✅ Done: {new_images} new images, {errors} errors')
+    logger.info(f"   Total images: {(new_images + conn.execute('SELECT COUNT(*) FROM performer_images').fetchone()[0] if False else '? (reconnect needed)')}")
 
 
 # ── Profile Scraping ──
@@ -461,13 +462,13 @@ def fetch_profiles(db_path: str = DB_PATH, max_profiles: Optional[int] = None,
 
     total = len(pending)
     if total == 0:
-        print("✓ All profiles are current (< 30 days old).")
+        logger.info('✓ All profiles are current (< 30 days old).')
         return
 
     if max_profiles:
         pending = pending[:max_profiles]
 
-    print(f"\n📥 Fetching {len(pending)}/{total} profiles (delay {FETCH_DELAY[0]}-{FETCH_DELAY[1]}s)...\n")
+    logger.info(f'\n📥 Fetching {len(pending)}/{total} profiles (delay {FETCH_DELAY[0]}-{FETCH_DELAY[1]}s)...\n')
 
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -475,11 +476,11 @@ def fetch_profiles(db_path: str = DB_PATH, max_profiles: Optional[int] = None,
     errors = 0
 
     for i, (model_id, name, url) in enumerate(pending, 1):
-        print(f"  [{i}/{len(pending)}] {name} ... ", end="", flush=True)
+        logger.info(f'  [{i}/{len(pending)}] {name} ... ')
 
         data = _scrape_profile(url)
         if data is None:
-            print("❌ (profile not found)")
+            logger.info('❌ (profile not found)')
             errors += 1
             time.sleep(random.uniform(*FETCH_DELAY))
             continue
@@ -507,14 +508,14 @@ def fetch_profiles(db_path: str = DB_PATH, max_profiles: Optional[int] = None,
 
         age_str = str(data['age']) if data['age'] is not None else '?'
         yrs = f" ({data['years_active']})" if data['years_active'] else ""
-        print(f"✓ {data['nationality']:12s} age={age_str:>2s}{yrs}  {len(data['tags'])} tags, {data['scene_count']} scenes")
+        logger.info(f"✓ {data['nationality']:12s} age={age_str:>2s}{yrs}  {len(data['tags'])} tags, {data['scene_count']} scenes")
 
         scraped += 1
         if i < len(pending):
             time.sleep(random.uniform(*FETCH_DELAY))
 
     conn.close()
-    print(f"\n✅ {scraped} profiles fetched, {errors} errors")
+    logger.info(f'\n✅ {scraped} profiles fetched, {errors} errors')
 
 
 # ── Validation ──
@@ -604,10 +605,10 @@ def sync_to_performers(db_path: str = DB_PATH):
     conn.close()
 
     if not new_models:
-        print("✓ All refdb models already synced to performers.")
+        logger.info('✓ All refdb models already synced to performers.')
         return
 
-    print(f"\n🔄 Syncing {len(new_models)} new models to performers table...")
+    logger.info(f'\n🔄 Syncing {len(new_models)} new models to performers table...')
 
     # Build items list
     items = []
@@ -622,7 +623,7 @@ def sync_to_performers(db_path: str = DB_PATH):
         })
 
     sync_count = add_performers_from_items(items)
-    print(f"✅ Synced {sync_count} performers")
+    logger.info(f'✅ Synced {sync_count} performers')
 
 
 # ── Stats ──
@@ -634,23 +635,23 @@ def show_stats(db_path: str = DB_PATH):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
 
-    print("\n📊 Reference Database Stats")
-    print("=" * 50)
+    logger.info('\n📊 Reference Database Stats')
+    logger.info('=' * 50)
 
     c.execute("SELECT COUNT(*) FROM refdb_models")
-    print(f"  Models in directory:   {c.fetchone()[0]:>6}")
+    logger.info(f'  Models in directory:   {c.fetchone()[0]:>6}')
 
     c.execute("SELECT COUNT(*) FROM refdb_profiles")
-    print(f"  Profiles scraped:      {c.fetchone()[0]:>6}")
+    logger.info(f'  Profiles scraped:      {c.fetchone()[0]:>6}')
 
     c.execute("SELECT COUNT(*) FROM refdb_scenes")
-    print(f"  Scenes indexed:        {c.fetchone()[0]:>6}")
+    logger.info(f'  Scenes indexed:        {c.fetchone()[0]:>6}')
 
     c.execute("SELECT COUNT(*) FROM refdb_validated_tags")
-    print(f"  Validated tags:        {c.fetchone()[0]:>6}")
+    logger.info(f'  Validated tags:        {c.fetchone()[0]:>6}')
 
     c.execute("SELECT COUNT(*) FROM performer_images")
-    print(f"  Images stored:         {c.fetchone()[0]:>6}")
+    logger.info(f'  Images stored:         {c.fetchone()[0]:>6}')
 
     # Nationality distribution
     c.execute("""
@@ -661,9 +662,9 @@ def show_stats(db_path: str = DB_PATH):
         ORDER BY cnt DESC
         LIMIT 10
     """)
-    print(f"\n  Top nationalities:")
+    logger.info(f'\n  Top nationalities:')
     for nat, cnt in c.fetchall():
-        print(f"    {nat:20s} {cnt:>4d}")
+        logger.info(f'    {nat:20s} {cnt:>4d}')
 
     # Age distribution
     c.execute("""
@@ -682,9 +683,9 @@ def show_stats(db_path: str = DB_PATH):
         GROUP BY age_group
         ORDER BY age_group
     """)
-    print(f"\n  Age distribution:")
+    logger.info(f'\n  Age distribution:')
     for grp, cnt in c.fetchall():
-        print(f"    {grp:12s} {cnt:>4d}")
+        logger.info(f'    {grp:12s} {cnt:>4d}')
 
     # Sync status
     c.execute("""
@@ -693,11 +694,11 @@ def show_stats(db_path: str = DB_PATH):
         WHERE p.id IS NULL
     """)
     not_synced = c.fetchone()[0]
-    print(f"\n  Not yet synced to performers: {not_synced}")
+    logger.info(f'\n  Not yet synced to performers: {not_synced}')
 
     # Images on disk
     img_count = len([f for f in os.listdir(STATIC_IMAGES_DIR) if f.endswith('.webp')])
-    print(f"  Image files on disk:   {img_count:>6}")
+    logger.info(f'  Image files on disk:   {img_count:>6}')
 
     conn.close()
 
@@ -717,7 +718,7 @@ Commands:
   --build              Full build: scrape + profiles + sync
 """
     if len(sys.argv) < 2 or "--help" in sys.argv or "-h" in sys.argv:
-        print(help_text)
+        logger.info(help_text)
         return
 
     if "--fetch-images" in sys.argv:
@@ -753,10 +754,12 @@ Commands:
                 end = int(parts[-1])
         scrape_directory(start_page=start, end_page=end)
     else:
-        print(help_text)
+        logger.info(help_text)
 
+
+from logutils import setup_logging
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.WARNING)
+    setup_logging(level=logging.WARNING)
     ensure_dirs()
     main()

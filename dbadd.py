@@ -15,6 +15,8 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from constants import STOP
+import logging
+logger = logging.getLogger(__name__)
 
 
 def parse_item_date(item_date: str, crawl_ts: int) -> str:
@@ -202,7 +204,7 @@ def create_db(db_path):
     cursor.execute("SELECT COUNT(*) FROM non_performer_tags")
     if cursor.fetchone()[0] == 0:
         _seed_non_performer_tags(cursor)
-        print("  ~ seeded non_performer_tags table")
+        logger.info('  ~ seeded non_performer_tags table')
 
 def _seed_non_performer_tags(cursor):
     """Seed the non_performer_tags table with initial blocklist values."""
@@ -451,7 +453,7 @@ def add_performers_from_items(items, db_path="performers.db"):
     # Print summary (quiet — orchestator shows its own per-site summary)
     if fuzzy_merged:
         for alt, canon in fuzzy_merged:
-            print(f"  ~ merged '{alt}' -> '{canon}' (AKA)")
+            logger.info(f"  ~ merged '{alt}' -> '{canon}' (AKA)")
 
 
 def add_performers_from_csv(csv_file_path, db_path="performers.db"):
@@ -597,7 +599,7 @@ def dedup_performers(db_path="performers.db", force=False):
 
             processed.add(remove)
             merged += 1
-            print(f'  {remove:30s} → {keep:30s}  ({r_count} items → merged)')
+            logger.info(f'  {remove:30s} → {keep:30s}  ({r_count} items → merged)')
 
         processed.add(name)
 
@@ -605,11 +607,11 @@ def dedup_performers(db_path="performers.db", force=False):
     conn.close()
 
     if merged:
-        print(f'\n{merged} Dubletten gemerged.')
+        logger.info(f'\n{merged} Dubletten gemerged.')
     if skipped_high:
-        print(f'{skipped_high} Paare übersprungen (beide >5 Items, --force zum mergen).')
+        logger.info(f'{skipped_high} Paare übersprungen (beide >5 Items, --force zum mergen).')
     if not merged and not skipped_high:
-        print('Keine Dubletten gefunden.')
+        logger.info('Keine Dubletten gefunden.')
 
 
 def resolve_nonames(db_path="performers.db", dry_run=False, limit=None):
@@ -640,7 +642,7 @@ def resolve_nonames(db_path="performers.db", dry_run=False, limit=None):
     c.execute("SELECT id FROM performers WHERE name = 'NO_NAME'")
     no_name_id = c.fetchone()
     if not no_name_id:
-        print("Kein NO_NAME-Eintrag.")
+        logger.info('Kein NO_NAME-Eintrag.')
         conn.close()
         return
     no_name_id = no_name_id[0]
@@ -716,13 +718,13 @@ def resolve_nonames(db_path="performers.db", dry_run=False, limit=None):
     items = c.fetchall()
     total = len(items)
     if total == 0:
-        print("Keine NO_NAME-Items.")
+        logger.info('Keine NO_NAME-Items.')
         conn.close()
         return
 
-    print(f"\n📋 {total} NO_NAME-Items...")
+    logger.info(f'\n📋 {total} NO_NAME-Items...')
     if dry_run:
-        print("   (Dry-Run — keine Änderungen)")
+        logger.info('   (Dry-Run — keine Änderungen)')
 
     resolved = 0
     s1 = s2 = s3 = 0
@@ -743,7 +745,7 @@ def resolve_nonames(db_path="performers.db", dry_run=False, limit=None):
             s1 += 1
         else:
             remaining.append((item_id, title, item_url))
-    print(f"  ├─ 1/3 Scene-URL (100% sicher): {s1}")
+    logger.info(f'  ├─ 1/3 Scene-URL (100% sicher): {s1}')
 
     # ── 2. URL-Slug WRatio ≥ 90 ──
     still = []
@@ -764,7 +766,7 @@ def resolve_nonames(db_path="performers.db", dry_run=False, limit=None):
                 review.append((score, cand, name, item_id, (title or "")[:60]))
         else:
             still.append((item_id, title, item_url))
-    print(f"  ├─ 2/3 URL-Slug WRatio≥90: {s2}")
+    logger.info(f'  ├─ 2/3 URL-Slug WRatio≥90: {s2}')
 
     # ── 3. Titel WRatio ≥ 90 ──
     def _process_title(item_id, title, item_url):
@@ -784,13 +786,13 @@ def resolve_nonames(db_path="performers.db", dry_run=False, limit=None):
             s3 += 1
             resolved += 1
 
-    print(f"  └─ 3/3 Titel WRatio≥90:     {s3}")
-    print(f"\n✅ {resolved}/{total} aufgelöst (Rest: {total - resolved})")
+    logger.info(f'  └─ 3/3 Titel WRatio≥90:     {s3}')
+    logger.info(f'\n✅ {resolved}/{total} aufgelöst (Rest: {total - resolved})')
 
     if review:
-        print(f"\n⚠️  {len(review)} unsichere Matches für Review:")
+        logger.info(f'\n⚠️  {len(review)} unsichere Matches für Review:')
         for score, cand, name, item_id, title_snip in sorted(review)[:20]:
-            print(f"  {score:5.1f}  {cand:25s} → {name:25s}  | {title_snip}")
+            logger.info(f'  {score:5.1f}  {cand:25s} → {name:25s}  | {title_snip}')
 
     if not dry_run:
         conn.commit()
@@ -822,11 +824,14 @@ def main():
 
     # Check if CSV file exists
     if not Path(csv_file_path).exists():
-        print(f"CSV file {csv_file_path} not found!")
+        logger.info(f'CSV file {csv_file_path} not found!')
         return
 
     add_performers_from_csv(csv_file_path, db_file_path)
 
 
+from logutils import setup_logging
+
 if __name__ == "__main__":
+    setup_logging()
     main()

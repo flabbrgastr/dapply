@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "performers.db")
 from constants import USER_AGENTS
+logger = logging.getLogger(__name__)
 
 
 def _ensure_tables(db_path: str = DB_PATH):
@@ -167,8 +168,8 @@ def scrape_directory_range(start_page: int = 1, end_page: int = 600,
     errors = 0
     total_pages = end_page - start_page + 1
 
-    print(f"\n📋 Scraping pages {start_page}-{end_page} ({total_pages} pages, ~{delay}s delay)...")
-    print(f"   Existing refdb models: {before}")
+    logger.info(f'\n📋 Scraping pages {start_page}-{end_page} ({total_pages} pages, ~{delay}s delay)...')
+    logger.info(f'   Existing refdb models: {before}')
 
     for page in range(start_page, end_page + 1):
         url = f"https://www.analvids.com/models?page={page}"
@@ -179,7 +180,7 @@ def scrape_directory_range(start_page: int = 1, end_page: int = 600,
             resp = requests.get(url, headers={"User-Agent": ua}, timeout=30)
 
             if resp.status_code != 200:
-                print(f"\r  [{page_num}/{total_pages}] Page {page}: HTTP {resp.status_code}     ")
+                logger.info(f'\r  [{page_num}/{total_pages}] Page {page}: HTTP {resp.status_code}     ')
                 errors += 1
                 time.sleep(delay)
                 continue
@@ -214,15 +215,14 @@ def scrape_directory_range(start_page: int = 1, end_page: int = 600,
 
             # Progress
             total = before + new_models
-            sys.stdout.write(f"\r  [{page_num}/{total_pages}] Page {page}: {len(models)} models "
-                           f"(+{page_new} new, ~{page_upd} upd) → {total} total   ")
+            logger.info(f'\r  [{page_num}/{total_pages}] Page {page}: {len(models)} models (+{page_new} new, ~{page_upd} upd) → {total} total   ')
             sys.stdout.flush()
 
         except requests.RequestException as e:
-            print(f"\r  [{page_num}/{total_pages}] Page {page}: Error: {e}                        ")
+            logger.info(f'\r  [{page_num}/{total_pages}] Page {page}: Error: {e}                        ')
             errors += 1
         except Exception as e:
-            print(f"\r  [{page_num}/{total_pages}] Page {page}: Parse error: {e}                  ")
+            logger.info(f'\r  [{page_num}/{total_pages}] Page {page}: Parse error: {e}                  ')
             errors += 1
 
         time.sleep(delay)
@@ -231,9 +231,8 @@ def scrape_directory_range(start_page: int = 1, end_page: int = 600,
     after = c.fetchone()[0]
     conn.close()
 
-    print(f"\n✅ Done: {total_pages} pages, +{after - before} net new models, "
-          f"{new_models} inserts, {updated_models} updates, {errors} errors")
-    print(f"   Total refdb models: {after}")
+    logger.info(f'\n✅ Done: {total_pages} pages, +{after - before} net new models, {new_models} inserts, {updated_models} updates, {errors} errors')
+    logger.info(f'   Total refdb models: {after}')
     return new_models, updated_models, errors
 
 
@@ -251,15 +250,15 @@ def find_last_page(start: int = 600) -> int:
         except Exception:
             return False
 
-    print(f"Binary searching for last page (starting from {start})...")
+    logger.info(f'Binary searching for last page (starting from {start})...')
     
     # First find an upper bound
     upper = start
     while has_models(upper):
-        print(f"  Page {upper}: has models")
+        logger.info(f'  Page {upper}: has models')
         upper *= 2
         if upper > 2000:
-            print(f"  Reached {upper}, stopping search")
+            logger.info(f'  Reached {upper}, stopping search')
             break
     
     # But we also need to check the starting point
@@ -272,7 +271,7 @@ def find_last_page(start: int = 600) -> int:
                 lo = mid
             else:
                 hi = mid - 1
-        print(f"  Last page with models: {lo}")
+        logger.info(f'  Last page with models: {lo}')
         return lo
     
     # Search up
@@ -284,7 +283,7 @@ def find_last_page(start: int = 600) -> int:
         else:
             hi = mid - 1
     
-    print(f"  Last page with models: {lo}")
+    logger.info(f'  Last page with models: {lo}')
     return lo
 
 
@@ -299,7 +298,7 @@ def main():
 
     if args.find_last:
         last = find_last_page(int(args.pages.split('-')[0]) if '-' in args.pages else int(args.pages))
-        print(f"Last page: {last}")
+        logger.info(f'Last page: {last}')
         return
 
     # Parse range
@@ -314,14 +313,16 @@ def main():
         url = f"https://www.analvids.com/models?page={start}"
         r = requests.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=30)
         models = parse_page(r.text)
-        print(f"Page {start}: {len(models)} models")
+        logger.info(f'Page {start}: {len(models)} models')
         for m in models[:10]:
-            print(f"  {m['name']:30s} {m['nationality']:4s} {m['scene_count']:4d} {m['slug']}")
+            logger.info(f"  {m['name']:30s} {m['nationality']:4s} {m['scene_count']:4d} {m['slug']}")
         return
 
     scrape_directory_range(start, end, delay=args.delay)
 
 
+from logutils import setup_logging
+
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.WARNING)
+    setup_logging(level=logging.WARNING)
     main()

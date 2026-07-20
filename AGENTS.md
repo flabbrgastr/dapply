@@ -262,13 +262,24 @@ def test_initialization():
 - Use `Enum` for fixed states (e.g., `ScrapeResult`).
 
 ### Logging
-Use Python's standard `logging`.
+Use Python's standard `logging`. Every module defines a module-level logger;
+CLI entrypoints configure output via `logutils.setup_logging()` (streams to
+stdout, so the cron's `/tmp/dapply-daily.log` capture and `2>&1` keep working).
 
 ```python
 import logging
+from logutils import setup_logging
+
 logger = logging.getLogger(__name__)
+
+# at a CLI entrypoint:
+setup_logging()  # INFO by default; setup_logging(level=logging.WARNING) for quieter tools
 logger.info("Operation started")
 ```
+
+Do **not** use bare `print()` for runtime output — route it through `logger`.
+(`setup_logging` is idempotent; library modules just define `logger` and let the
+entrypoint configure the root handler.)
 
 ### Project-Specific Patterns
 - **URL Templates**: Use `$variable` syntax (e.g., `https://site.com/id=$id`).

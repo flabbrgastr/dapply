@@ -10,6 +10,8 @@ import yaml
 import os
 from datetime import datetime, timedelta
 from itertools import product
+import logging
+logger = logging.getLogger(__name__)
 
 
 class URLGenerator:
@@ -203,14 +205,14 @@ class URLGenerator:
         failed_count = len([url for url in all_urls if self.is_url_failed(url)])
         pending_count = len([url for url in all_urls if not self.is_url_done(url) and not self.is_url_failed(url)])
 
-        print(f"URL Processing Status:")
-        print(f"  Total URLs:         {total_count}")
-        print(f"  Completed [X]:      {completed_count}")
-        print(f"  Pending [ ]:        {pending_count}")
-        print(f"  Failed [-N]:        {failed_count}")
-        print(f"  Remaining to Process: {failed_count + pending_count}")
-        print(f"  Progress:           {completed_count/total_count*100:.1f}%") if total_count > 0 else print("  Progress:           0%")
-        print()
+        logger.info(f'URL Processing Status:')
+        logger.info(f'  Total URLs:         {total_count}')
+        logger.info(f'  Completed [X]:      {completed_count}')
+        logger.info(f'  Pending [ ]:        {pending_count}')
+        logger.info(f'  Failed [-N]:        {failed_count}')
+        logger.info(f'  Remaining to Process: {failed_count + pending_count}')
+        logger.info(f'  Progress:           {completed_count / total_count * 100:.1f}%') if total_count > 0 else logger.info('  Progress:           0%')
+        logger.info("")
 
     def print_todo_urls(self, limit=None):
         """Print URLs that still need to be processed"""
@@ -218,10 +220,10 @@ class URLGenerator:
         if limit:
             todo_urls = todo_urls[:limit]
 
-        print(f"URLs to process ({len(todo_urls)} remaining):")
-        print("-" * 60)
+        logger.info(f'URLs to process ({len(todo_urls)} remaining):')
+        logger.info('-' * 60)
         for i, url in enumerate(todo_urls, 1):
             status = "X" if self.is_url_done(url) else \
                      f"-{self.get_failure_count(url)}" if self.is_url_failed(url) else \
                      " "
-            print(f"{i:3d}. [{status}] {url}")
+            logger.info(f'{i:3d}. [{status}] {url}')
