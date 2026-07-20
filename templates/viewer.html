@@ -55,12 +55,10 @@
       <div class="add-form">
         <span style="color:var(--text2); font-size:13px;">➕ Add</span>
         <input type="text" id="new-name" placeholder="Performer name" />
-        <input type="text" id="new-rating" placeholder="Tag (beau, raw, +, ++, −, −−, fng, dedup, ?, !, !!)" maxlength="10" list="rating-hints" title="Tags — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake &amp; gay (avoid) · dedup: already here as AKA · ?: dont know · !: attention, look into it · !!: priority, look into it" />
-        <small class="hint">beau beautiful · raw · + good · ++ extraordinary · - not good · -- awful · fng fake&amp;gay (avoid) · dedup already an AKA · ? dont know · ! attention (look into it) · !! priority (look into it)</small>
+        <input type="text" id="new-rating" placeholder="tags, comma-separated (beau, raw, +, …)" maxlength="80" title="Tags (comma-separated) — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake &amp; gay (avoid) · dedup: already here as AKA · ?: dont know · !: attention, look into it · !!: priority, look into it" />
+        <small class="hint">tags comma-separated · beau beautiful · raw · + good · ++ extraordinary · - not good · -- awful · fng fake&amp;gay (avoid) · dedup already an AKA · ? dont know · ! attention (look into it) · !! priority (look into it)</small>
         <button class="btn btn-primary" onclick="addPerformer()">Add</button>
       </div>
-
-      <datalist id="rating-hints"></datalist>
 
       <!-- Controls -->
       <div class="controls">
@@ -321,15 +319,7 @@
     <script>
       let performersData = [];
 
-      // Tag-style hints for the rating field (kept short on purpose).
-      const TAGS = ["beau", "raw", "+", "++", "-", "--", "fng", "dedup", "?", "!", "!!"];
-      (function populateRatingHints() {
-        const dl = document.getElementById("rating-hints");
-        if (!dl) return;
-        TAGS.forEach(t => {
-          const o = document.createElement("option"); o.value = t; dl.appendChild(o);
-        });
-      })();
+      // Rating tags are free-text, comma-separated; the legend below is the hint (no dropdown selector).
       let currentSort = { column: "name", order: "asc" };
       let currentPerformerId = null;
       let searchTimer = null;
@@ -481,7 +471,7 @@
               : ""}
           `;
           const ratingCell = document.createElement("td");
-          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" list="rating-hints" placeholder="tag…" title="Tags — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake &amp; gay (avoid) · dedup: already here as AKA · ?: dont know · !: attention, look into it · !!: priority, look into it" onchange="updateRating(${performer.id})">`;
+          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="80" placeholder="tags, comma-separated…" title="Tags (comma-separated) — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake &amp; gay (avoid) · dedup: already here as AKA · ?: dont know · !: attention, look into it · !!: priority, look into it" onchange="updateRating(${performer.id})">`;
           row.innerHTML = `
             <td style="white-space:nowrap;">${nameCell.innerHTML}</td>
             <td>${performer.aka || ""}</td>
