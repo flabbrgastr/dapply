@@ -131,11 +131,6 @@ class PerformerRepository(ABC):
         """Set item's performer_id to NULL."""
 
     @abstractmethod
-    def insert_item(self, **data) -> int:
-        """Insert a new item. Common keys: item_url, title, item_date,
-        hits, source_file, performer_id (defaults to NO_NAME), thumbnail_url."""
-
-    @abstractmethod
     def count_items(self, performer_id: int) -> int:
         """Count items for a performer."""
 
@@ -601,27 +596,6 @@ class SqlitePerformerRepository(PerformerRepository):
         conn.execute("UPDATE items SET performer_id = NULL WHERE id = ?", (item_id,))
         conn.commit()
         conn.close()
-
-    def insert_item(self, **data) -> int:
-        conn = self._conn()
-        conn.execute("""
-            INSERT INTO items (item_url, title, item_date, hits,
-                               source_file, performer_id, thumbnail_url)
-            VALUES (:item_url, :title, :item_date, :hits,
-                    :source_file, :performer_id, :thumbnail_url)
-        """, {
-            "item_url": data.get("item_url", ""),
-            "title": data.get("title", ""),
-            "item_date": data.get("item_date", ""),
-            "hits": data.get("hits", 0),
-            "source_file": data.get("source_file", ""),
-            "performer_id": data.get("performer_id"),
-            "thumbnail_url": data.get("thumbnail_url", ""),
-        })
-        iid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.commit()
-        conn.close()
-        return iid
 
     def count_items(self, performer_id: int) -> int:
         conn = self._conn()
@@ -1346,22 +1320,6 @@ class InMemoryPerformerRepository(PerformerRepository):
     def unassign_item(self, item_id: int) -> None:
         if item_id in self._items:
             self._items[item_id]["performer_id"] = None
-
-    def insert_item(self, **data) -> int:
-        iid = self._next_iid
-        self._next_iid += 1
-        self._items[iid] = {
-            "id": iid,
-            "item_url": data.get("item_url", ""),
-            "title": data.get("title", ""),
-            "item_date": data.get("item_date", ""),
-            "hits": data.get("hits", 0),
-            "source_file": data.get("source_file", ""),
-            "performer_id": data.get("performer_id"),
-            "added_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-            "thumbnail_url": data.get("thumbnail_url", ""),
-        }
-        return iid
 
     def count_items(self, performer_id: int) -> int:
         return sum(1 for v in self._items.values()

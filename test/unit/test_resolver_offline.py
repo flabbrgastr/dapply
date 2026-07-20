@@ -227,8 +227,8 @@ def test_run_llm_pass_persists_via_save_and_apply(tmp_path):
     db = str(tmp_path / "perf.db")
     repo = SqlitePerformerRepository(db)
     pid = repo.insert("Mia Kalani")
-    # Insert an item directly (dbadd.create_db's items schema lacks the
-    # thumbnail_url column insert_item expects; irrelevant to this test).
+    # Insert an item directly (dbadd.create_db's items schema now includes the
+    # thumbnail_url column; irrelevant to this test).
     conn = repo._conn()
     conn.execute(
         "INSERT INTO items (item_url, title, performer_id) VALUES (?, ?, NULL)",
@@ -263,22 +263,27 @@ def test_run_llm_pass_persists_via_save_and_apply(tmp_path):
     assert _count_performers(db) == before  # NO_NAME not seeded; only Mia Kalani
 
 
-def test_insert_item_on_fresh_db_has_thumbnail_column(tmp_path):
+def test_items_table_has_thumbnail_column(tmp_path):
     """Regression for the latent bug: create_db's items table was missing the
-    ``thumbnail_url`` column that insert_item (and the thumb scripts) expect.
-    insert_item on a fresh DB raised OperationalError before the fix.
+    ``thumbnail_url`` column. The ingestion pipeline inserts items via direct
+    SQL; this must not raise and the column must default to empty string.
     """
     db = str(tmp_path / "perf.db")
-    repo = SqlitePerformerRepository(db)
-    iid = repo.insert_item(item_url="https://sxyprn.com/post/foo", title="Foo video")
-    assert isinstance(iid, int) and iid >= 1
+    SqlitePerformerRepository(db)  # constructs -> create_db() builds the schema
     conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO items (item_url, title, thumbnail_url) VALUES (?, ?, ?)",
+        ("https://sxyprn.com/post/foo", "Foo video", ""),
+    )
+    iid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
     row = conn.execute(
         "SELECT item_url, thumbnail_url FROM items WHERE id = ?", (iid,)
     ).fetchone()
     conn.close()
+    assert isinstance(iid, int) and iid >= 1
     assert row[0] == "https://sxyprn.com/post/foo"
-    assert row[1] == ""  # column now exists; insert_item defaults it to empty string
+    assert row[1] == ""  # column exists and defaults to empty string
 
 
 def test_fast_match_item_slug_substring():
