@@ -147,8 +147,9 @@ def scrape_directory(
     delay: float = 1.0,
 ):
     """
-    Scrape the analvids model directory pages and populate refdb_models.
-    Also extracts and saves thumbnails.
+    Fetch and save model thumbnail images from the analvids directory pages
+    into performer_images. (Population of refdb_models is handled by
+    scrape_refdb_full.py, which is the canonical directory scraper.)
 
     Args:
         start_page: First page to scrape (1-indexed)
@@ -185,55 +186,8 @@ def scrape_directory(
 
             html = resp.text
 
-            # Extract model info from model cards (old method - for name)
-            # Find model names and URLs from page
-            name_pattern = re.compile(
-                r'class="model-top__name"[^>]*>([^<]+)<'
-            )
-            url_pattern = re.compile(
-                r'href="(https://www\.analvids\.com/model/(\d+)/([^"]+))"'
-            )
-
-            names = name_pattern.findall(html)
-            urls_found = url_pattern.findall(html)
-
-            # Build slug map {model_id: slug}
-            slug_map = {}
-            for full_url, mid, slug in urls_found:
-                slug_map[int(mid)] = slug
-
-            # Insert models
-            for name in names:
-                name = name.strip()
-                if not name:
-                    continue
-                try:
-                    c.execute(
-                        "INSERT OR IGNORE INTO refdb_models (name) VALUES (?)",
-                        (name,),
-                    )
-                    if c.rowcount > 0:
-                        new_names += 1
-                except sqlite3.Error:
-                    pass
-
-            # Update profile URLs
-            for mid, slug in slug_map.items():
-                profile_url = generate_profile_url(mid, slug)
-                c.execute(
-                    "UPDATE refdb_models SET profile_url = ?, last_updated = CURRENT_TIMESTAMP WHERE name = (SELECT name FROM refdb_models WHERE profile_url = '' OR profile_url IS NULL LIMIT 1) AND profile_url = ''",
-                    (profile_url,),
-                )
-                # Simpler: update by matching slug in profile_url
-                c.execute(
-                    "UPDATE refdb_models SET profile_url = ?, last_updated = CURRENT_TIMESTAMP WHERE profile_url = '' AND name IN (SELECT name FROM refdb_models WHERE id > 0)",
-                )
-                c.execute(
-                    "UPDATE refdb_models SET profile_url = ?, last_updated = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM refdb_models WHERE name LIKE ? LIMIT 1)",
-                    (profile_url, f"%{name}%"),
-                )
-
-            # Extract thumbnails from directory page
+            # Extract thumbnails from directory page (refdb_models is populated
+            # by scrape_refdb_full.py; this path only fetches thumbnail images).
             thumbnails = _parse_directory_page(html)
             for t in thumbnails:
                 # Download and save thumbnail
