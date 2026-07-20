@@ -310,3 +310,20 @@
 }
 .stat-card .num { font-size: 26px; font-weight: 700; color: var(--accent); }
 .stat-card .lbl { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+/* Light "×" delete affordance in the performers table (replaces the old
+   red "Del" button). */
+.row-x {
+  background: none;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.row-x:hover {
+  color: var(--red);
+  background: var(--surface2);
+}

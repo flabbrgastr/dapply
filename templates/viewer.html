@@ -55,9 +55,11 @@
       <div class="add-form">
         <span style="color:var(--text2); font-size:13px;">➕ Add</span>
         <input type="text" id="new-name" placeholder="Performer name" />
-        <input type="text" id="new-rating" placeholder="Rating" maxlength="10" />
+        <input type="text" id="new-rating" placeholder="Rating (A, AA+, 8…)" maxlength="10" list="rating-hints" title="Rating tiers: AAA…E (optionally +/−), or a number 0–10" />
         <button class="btn btn-primary" onclick="addPerformer()">Add</button>
       </div>
+
+      <datalist id="rating-hints"></datalist>
 
       <!-- Controls -->
       <div class="controls">
@@ -83,6 +85,10 @@
           <label style="margin-left:15px; font-size:13px;">
             <input type="checkbox" id="dap-only" onchange="loadPerformers()">
             🔞 DAP only
+          </label>
+          <label style="margin-left:15px; font-size:13px;">
+            <input type="checkbox" id="hide-noinfo" onchange="renderFiltered()" checked>
+            Hide no‑info
           </label>
         </div>
         <div>
@@ -313,6 +319,19 @@
 
     <script>
       let performersData = [];
+
+      // Rating scale hints (alphabetical tiers + numeric 0–10) for <datalist>.
+      const RATING_TIERS = ["AAA","AA","A","BBB","BB","B","CCC","CC","C","DDD","DD","D","EEE","EE","E"];
+      (function populateRatingHints() {
+        const dl = document.getElementById("rating-hints");
+        if (!dl) return;
+        RATING_TIERS.forEach(p => ["","+","-"].forEach(suf => {
+          const o = document.createElement("option"); o.value = p + suf; dl.appendChild(o);
+        }));
+        for (let n = 0; n <= 10; n++) {
+          const o = document.createElement("option"); o.value = String(n); dl.appendChild(o);
+        }
+      })();
       let currentSort = { column: "name", order: "asc" };
       let currentPerformerId = null;
       let searchTimer = null;
@@ -417,7 +436,7 @@
         if (searchQ) params.set("q", searchQ);
         fetch(api("api/performers?" + params.toString()))
           .then(r => r.json())
-          .then(data => { performersData = data; renderPerformersTable(performersData); updateStats(); })
+          .then(data => { performersData = data; renderFiltered(); updateStats(); })
           .catch(e => console.error("Error loading performers:", e));
       }
 
@@ -430,7 +449,7 @@
         document.getElementById("sort-column").value = column;
         document.getElementById("sort-order").value = currentSort.order;
         performersData = sortData(performersData, column, currentSort.order);
-        renderPerformersTable(performersData);
+        renderFiltered();
       }
 
       function applySort() {
@@ -438,7 +457,7 @@
         const ord = document.getElementById("sort-order").value;
         currentSort.column = col; currentSort.order = ord;
         performersData = sortData(performersData, col, ord);
-        renderPerformersTable(performersData);
+        renderFiltered();
       }
 
       function renderPerformersTable(data) {
@@ -464,7 +483,7 @@
               : ""}
           `;
           const ratingCell = document.createElement("td");
-          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" onchange="updateRating(${performer.id})">`;
+          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" list="rating-hints" placeholder="A / AA+ / 8" title="Rating tiers: AAA…E (optionally +/−), or a number 0–10" onchange="updateRating(${performer.id})">`;
           row.innerHTML = `
             <td style="white-space:nowrap;">${nameCell.innerHTML}</td>
             <td>${performer.aka || ""}</td>
@@ -474,10 +493,31 @@
             <td>${performer.crawls || 0}</td>
           `;
           row.appendChild(ratingCell);
-          row.innerHTML += `<td><button class="btn btn-danger" onclick="deletePerformer(${performer.id})" style="padding:3px 10px;font-size:12px;">Del</button></td>`;
+          row.innerHTML += `<td><button class="row-x" onclick="deletePerformer(${performer.id})" title="Delete performer">×</button></td>`;
           fragment.appendChild(row);
         });
         tbody.appendChild(fragment);
+      }
+
+      function hasInfo(p) {
+        return !!(
+          (p.rating && String(p.rating).trim() !== "") ||
+          (p.nationality && String(p.nationality).trim() !== "") ||
+          (p.age != null && p.age !== "" && p.age !== 0) ||
+          (p.crawls > 0) ||
+          (p.aka && String(p.aka).trim() !== "")
+        );
+      }
+
+      function renderFiltered() {
+        if (!performersData) return;
+        let list = performersData;
+        if (document.getElementById("hide-noinfo") &&
+            document.getElementById("hide-noinfo").checked) {
+          list = list.filter(hasInfo);
+        }
+        list = sortData(list, currentSort.column, currentSort.order);
+        renderPerformersTable(list);
       }
 
       function viewPerformerItems(performerId, performerName) {
