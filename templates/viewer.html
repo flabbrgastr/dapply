@@ -55,7 +55,8 @@
       <div class="add-form">
         <span style="color:var(--text2); font-size:13px;">➕ Add</span>
         <input type="text" id="new-name" placeholder="Performer name" />
-        <input type="text" id="new-rating" placeholder="Tag (beautiful, raw, +, ++, −, −−)" maxlength="10" list="rating-hints" title="Tags: beautiful, raw, +, ++, −, −−" />
+        <input type="text" id="new-rating" placeholder="Tag (beau, raw, +, ++, −, −−, fng, dedup)" maxlength="10" list="rating-hints" title="Tags — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake &amp; gay (avoid) · dedup: already here as AKA" />
+        <small class="hint">beau beautiful · raw · + good · ++ extraordinary · - not good · -- awful · fng fake&amp;gay (avoid) · dedup already an AKA</small>
         <button class="btn btn-primary" onclick="addPerformer()">Add</button>
       </div>
 
@@ -321,7 +322,7 @@
       let performersData = [];
 
       // Tag-style hints for the rating field (kept short on purpose).
-      const TAGS = ["beautiful", "raw", "+", "++", "-", "--"];
+      const TAGS = ["beau", "raw", "+", "++", "-", "--", "fng", "dedup"];
       (function populateRatingHints() {
         const dl = document.getElementById("rating-hints");
         if (!dl) return;
@@ -480,7 +481,7 @@
               : ""}
           `;
           const ratingCell = document.createElement("td");
-          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" list="rating-hints" placeholder="tag…" title="Tags: beautiful, raw, +, ++, −, −−" onchange="updateRating(${performer.id})">`;
+          ratingCell.innerHTML = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${performer.rating || ""}" maxlength="10" list="rating-hints" placeholder="tag…" title="Tags — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake &amp; gay (avoid) · dedup: already here as AKA" onchange="updateRating(${performer.id})">`;
           row.innerHTML = `
             <td style="white-space:nowrap;">${nameCell.innerHTML}</td>
             <td>${performer.aka || ""}</td>

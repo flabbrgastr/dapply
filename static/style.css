@@ -327,3 +327,11 @@
   color: var(--red);
   background: var(--surface2);
 }
+
+/* Muted helper text under the Add-performer rating input (tag legend). */
+.hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text2);
+}
