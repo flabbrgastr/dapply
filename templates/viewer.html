@@ -772,19 +772,26 @@
           .then(function(r) { return r.json(); })
           .then(function(data) {
             // Auto-fetch image
+            function setPerfImg(src) {
+              var img = document.getElementById("perf-img");
+              var ph = document.getElementById("perf-img-placeholder");
+              if (img) {
+                img.onload = function() { img.style.display = ""; if (ph) ph.style.display = "none"; };
+                img.onerror = function() { img.style.display = "none"; if (ph) ph.style.display = "flex"; };
+                img.src = src;
+              }
+            }
             if (!data.profile_image) {
               fetch(api("api/performers/" + performerId + "/scrape-image"), { method: "POST" })
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
                   if (d.profile_image) {
-                    var img = document.getElementById("perf-img");
-                    if (img) img.src = d.profile_image;
+                    setPerfImg(d.profile_image);
                     showToast("Fetched image from analvids");
                   }
                 }).catch(function() {});
             } else {
-              var img = document.getElementById("perf-img");
-              if (img) img.src = data.profile_image;
+              setPerfImg(data.profile_image);
             }
             var f = data.features;
             var chips = [];
