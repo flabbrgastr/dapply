@@ -673,7 +673,11 @@
               : "");
           const ratingVal = String(performer.rating == null ? "" : performer.rating)
             .replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-          const ratingHtml = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${ratingVal}" maxlength="80" placeholder="tags, comma-separated…" title="${ratingTitle}" onchange="updateRating(${performer.id})">`;
+          const ratingHtml = `<div style="display:flex; gap:2px; align-items:center;">` +
+            `<button onclick="votePerformer(${performer.id},'up')" style="background:none; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:11px; cursor:pointer; line-height:1;">\ud83d\udc4d</button>` +
+            `<button onclick="votePerformer(${performer.id},'down')" style="background:none; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:11px; cursor:pointer; line-height:1;">\ud83d\udc4e</button>` +
+            `<input type="text" class="rating-input" id="rating-${performer.id}" value="${ratingVal}" maxlength="80" placeholder="tags, comma-separated…" title="${ratingTitle}" onchange="updateRating(${performer.id})" style="flex:1; min-width:60px;">` +
+            `</div>`;
           const akaRaw = performer.aka || "";
           const akaParts = akaRaw.split(",").map(s => s.trim()).filter(Boolean);
           let aka = akaParts.slice(0, 2).join(", ");
@@ -764,6 +768,18 @@
         fixBtn.onclick = function() { fixPerformerImage(performerId); };
         fixBtn.title = "Replace photo";
         btnCol.appendChild(fixBtn);
+        var upBtn = document.createElement("button");
+        upBtn.textContent = "\ud83d\udc4d";
+        upBtn.style.cssText = "background:none; border:1px solid var(--border); border-radius:4px; padding:2px 8px; font-size:12px; cursor:pointer; line-height:1;";
+        upBtn.onclick = function() { votePerformer(performerId, "up"); };
+        upBtn.title = "Like";
+        btnCol.appendChild(upBtn);
+        var dnBtn = document.createElement("button");
+        dnBtn.textContent = "\ud83d\udc4e";
+        dnBtn.style.cssText = "background:none; border:1px solid var(--border); border-radius:4px; padding:2px 8px; font-size:12px; cursor:pointer; line-height:1;";
+        dnBtn.onclick = function() { votePerformer(performerId, "down"); };
+        dnBtn.title = "Dislike";
+        btnCol.appendChild(dnBtn);
         headerDiv.appendChild(btnCol);
         header.innerHTML = "";
         header.appendChild(headerDiv);
@@ -808,7 +824,7 @@
               }
             }
             if (data.first_seen || data.last_seen) {
-              chips.push("first " + formatDate(data.first_seen) + " \\u00b7 last " + formatDate(data.last_seen));
+              chips.push("first " + formatDate(data.first_seen) + " \u00b7 last " + formatDate(data.last_seen));
             }
             document.getElementById("meta-chips").innerHTML = chips
               .map(function(c) { return '<span style="background:var(--surface); padding:1px 6px; border-radius:4px; border:1px solid var(--border); font-size:11px;">' + c + '</span>'; })
@@ -830,11 +846,11 @@
                 var ml = document.getElementById("model-line");
                 if (m.profile_url) {
                   var shortUrl = m.profile_url.replace(/https?:\/\//, "");
-                  ml.innerHTML = '<span style="color:var(--text2);">\\ud83d\\udcce </span><a href="' + escHtml(m.profile_url) + '" target="_blank" style="color:var(--accent);">' + escHtml(shortUrl) + '</a>' +
-                    ' <button onclick="editModelInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Change model URL">\\u270e</button>' +
-                    ' <button onclick="clearPerformerModel(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Clear model">\\u2715</button>';
+                  ml.innerHTML = '<span style="color:var(--text2);">📎 </span><a href="' + escHtml(m.profile_url) + '" target="_blank" style="color:var(--accent);">' + escHtml(shortUrl) + '</a>' +
+                    ' <button onclick="editModelInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Change model URL">✎</button>' +
+                    ' <button onclick="clearPerformerModel(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Clear model">✕</button>';
                 } else {
-                  ml.innerHTML = '<span style="color:var(--text2);">\\ud83d\\udcce Model: none</span>' +
+                  ml.innerHTML = '<span style="color:var(--text2);">📎 Model: none</span>' +
                     ' <button onclick="editModelInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;">+ Assign</button>';
                 }
               }).catch(function() {});
@@ -845,7 +861,7 @@
               var maxShow = 8;
               var tagChips = tagList.slice(0, maxShow).map(function(t) { return makeTagChip(t); });
               var moreCount = tagList.length - maxShow;
-              ts.innerHTML = '<span style="color:var(--text2);">\\ud83c\\udff7\\ufe0f </span>';
+              ts.innerHTML = '<span style="color:var(--text2);">🏷️ </span>';
               for (var ti = 0; ti < tagChips.length; ti++) { ts.appendChild(tagChips[ti]); }
               if (moreCount > 0) {
                 var more = document.createElement("span");
@@ -854,7 +870,7 @@
                 more.onclick = (function(tl, pid) {
                   return function() {
                     var ts2 = document.getElementById("tags-section");
-                    ts2.innerHTML = '<span style="color:var(--text2);">\\ud83c\\udff7\\ufe0f </span>';
+                    ts2.innerHTML = '<span style="color:var(--text2);">🏷️ </span>';
                     for (var j = 0; j < tl.length; j++) { ts2.appendChild(makeTagChip(tl[j])); }
                     ts2.appendChild(editTagsBtn(pid, tl.join(", ")));
                   };
@@ -863,7 +879,7 @@
               }
               ts.appendChild(editTagsBtn(performerId, f.tags));
             } else {
-              ts.innerHTML = '<span style="color:var(--text2);">\\ud83c\\udff7\\ufe0f No tags</span>' +
+              ts.innerHTML = '<span style="color:var(--text2);">🏷️ No tags</span>' +
                 ' <button onclick="editTagsInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;">+ Add</button>';
             }
           })
@@ -1157,8 +1173,38 @@
         return `<div class="stat-card"><div class="num">${num}</div><div class="lbl">${label}</div></div>`;
       }
 
+      function votePerformer(id, dir) {
+        var inp = document.getElementById("rating-" + id);
+        if (!inp) {
+          // Detail page: fetch current rating via features endpoint, then vote
+          fetch(api("api/performers/" + id + "/features"))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              votePerformerWithVal(id, dir, (d.rating || ""));
+            }).catch(function() {});
+          return;
+        }
+        votePerformerWithVal(id, dir, inp.value);
+      }
+      function votePerformerWithVal(id, dir, val) {
+        var up = (val.match(/\+/g) || []).length;
+        var dn = (val.match(/\-/g) || []).length;
+        if (dir === "up" && up < 2) { up++; }
+        else if (dir === "down" && dn < 2) { dn++; }
+        else return;
+        var clean = val.replace(/[+\-]/g, "").trim();
+        var newRating = clean + (clean ? " " : "") + "+".repeat(up) + "-".repeat(dn);
+        newRating = newRating.trim();
+        // Update input if it exists (table view), then save
+        var inp = document.getElementById("rating-" + id);
+        if (inp) inp.value = newRating;
+        fetch(api("api/performers/" + id), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating: newRating }) })
+          .then(function(r) { if (!r.ok) console.log("Error updating rating for " + id); })
+          .catch(function(e) { console.error("Error:", e); });
+      }
       function updateRating(id) {
         const ratingInput = document.getElementById(`rating-${id}`);
+        if (!ratingInput) return;
         const rating = ratingInput.value;
         fetch(api(`api/performers/${id}`), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating: rating }) })
           .then(r => { if (!r.ok) console.log("Error updating rating for performer " + id); })

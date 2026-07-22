@@ -345,6 +345,7 @@ def create_app(repo: Optional[PerformerRepository] = None,
 
         profile_image = repo.get_profile_image(pname, performer.get("image_override") if performer else None)
 
+        prating = performer.get("rating", "") if performer else ""
         return jsonify({
             "features": feat,
             "scenes": scenes,
@@ -355,6 +356,7 @@ def create_app(repo: Optional[PerformerRepository] = None,
             "last_seen": plast,
             "profile_image": profile_image,
             "image_override": performer.get("image_override") if performer else None,
+            "rating": prating,
         })
 
     @app.route("/api/performers/<int:performer_id>/image", methods=["PUT"])
