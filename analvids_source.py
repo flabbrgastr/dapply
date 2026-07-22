@@ -97,10 +97,15 @@ class ScrapingAnalvidsSource(AnalvidsSource):
                 if flag_match:
                     nationality = flag_match.group(1).upper()
 
+                image = None
+                img_match = re.search(r'<img[^>]+src="(https://[^"]+)"[^>]*>', card[:400])
+                if img_match:
+                    image = img_match.group(1)
                 results.append({
                     "name": name, "url": profile_url,
                     "model_id": model_id, "scenes": scenes,
                     "nationality": nationality,
+                    "image": image,
                 })
 
             return {"results": results[:10]}
@@ -192,9 +197,23 @@ class ScrapingAnalvidsSource(AnalvidsSource):
                 scenes = int(scene_match.group(1))
 
             image = None
-            img_match = re.search(r'class="model__bg"[^>]*src="([^"]+)"', html)
-            if img_match:
-                image = img_match.group(1).replace('&amp;', '&')
+            m = re.search(r'class="[^"]*model__left--photo[^"]*"', html)
+            if m:
+                seg = html[m.end():m.end() + 3000]
+                sm = re.search(r'<img[^>]*src="([^"]+)"', seg)
+                if sm:
+                    image = sm.group(1).replace('&amp;', '&')
+            if not image:
+                m = re.search(r'class="[^"]*model__photo[^"]*"', html)
+                if m:
+                    seg = html[m.end():m.end() + 3000]
+                    sm = re.search(r'<img[^>]*src="([^"]+)"', seg)
+                    if sm:
+                        image = sm.group(1).replace('&amp;', '&')
+            if not image:
+                img_match = re.search(r'class="model__bg"[^>]*src="([^"]+)"', html)
+                if img_match:
+                    image = img_match.group(1).replace('&amp;', '&')
             if not image:
                 img_match = re.search(r'data-src="([^"]*cdn77[^"]*w=420[^"]+)"', html)
                 if img_match:

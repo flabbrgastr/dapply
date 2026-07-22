@@ -12,7 +12,10 @@ uv sync --extra dev     # includes pytest
 # Run tests
 uv run pytest test/unit/ -v
 
-# --- Daily update (scrape 3 fresh pages from each site) ---
+# --- Daily sxyprn update (re-scrape page 0 for fresh performers) ---
+uv run python orchestator.py --daily
+
+# Scrape 3 fresh pages from each site
 uv run python orchestator.py
 
 # More pages or specific site
@@ -42,7 +45,7 @@ Runs persistently behind nginx reverse proxy (HTTP basic auth).
 ```
 
 **`update-dapply.sh`** does:
-1. `uv run python orchestator.py` — scrapes 3 fresh pages per site with auto-stop
+1. `uv run python orchestator.py --daily` — re-scrapes sxyprn page 0 for fresh performers
 2. Ensures the web UI is alive on port 8009 (restarts if dead)
 
 ### Logs

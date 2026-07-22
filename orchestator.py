@@ -15,6 +15,8 @@ from scraper import ScraperModule
 from url_generator import URLGenerator
 from dbadd import add_performers_from_items
 
+logger = logging.getLogger(__name__)
+
 
 class Orchestator:
     """
@@ -625,6 +627,124 @@ class Orchestator:
         self.logger.info("Resetting workflow...")
         self.url_generator.reset_status()
 
+    def daily_update(self) -> None:
+        """
+        Daily update: scrape sxyprn main page for new items + analvids
+        model directory page 1 for fresh performers.
+
+        - sxyprn main page: all latest uploads, 100+ items, mostly known performers
+        - analvids models page 1: new/updated model profiles, the real source of fresh names
+        """
+        from extractor import extract_from_file
+        from scraper import ScrapeResult, ScraperModule
+        from urllib.parse import urlparse
+
+        # ── 1. Scrape sxyprn main page (new items, mostly known performers) ──
+        sxyprn_main = "https://sxyprn.com/"
+        self.logger.info(f"Daily: scraping sxyprn main page {sxyprn_main}")
+
+        scraper = ScraperModule(
+            delay_between_requests=1.5,
+            max_retries=3,
+            output_dir=self.output_dir,
+            crawl_name=self.crawl_name,
+        )
+
+        response = scraper.scrape_batch(
+            [sxyprn_main],
+            max_concurrent=1,
+            url_config_names={sxyprn_main: "sxyprn"},
+        )[0]
+
+        if response.result == ScrapeResult.SUCCESS and response.filename:
+            items = extract_from_file(response.filename)
+            new_items, all_items = self._filter_novel_items(items, set())
+            self.logger.info(
+                f"  sxyprn: {len(new_items)} new items out of {len(all_items)} total"
+            )
+
+            if new_items:
+                self._append_items_to_csv(new_items)
+                try:
+                    add_performers_from_items(new_items)
+                except Exception as e:
+                    self.logger.error(f"DB error: {e}")
+
+                new_names = set()
+                for item in new_items:
+                    performers_str = item.get("performers") or ""
+                    if performers_str and performers_str != "NO_NAME":
+                        for name in performers_str.split(";"):
+                            n = name.strip()
+                            if n:
+                                new_names.add(n)
+
+                if new_names:
+                    names_shown = list(new_names)[:5]
+                    suffix = "..." if len(new_names) > 5 else ""
+                    self.logger.info(
+                        f"  sxyprn performers: {', '.join(names_shown)}{suffix}"
+                    )
+                self.logger.info(f"  ✓ sxyprn: {len(new_items)} new items")
+            else:
+                self.logger.info("  ✓ sxyprn: no new items")
+        else:
+            self.logger.error(f"  ✗ sxyprn failed: {response.error_message}")
+
+        # ── 2. Scrape analvids models page 1 (fresh performer names) ──
+        anv_models_p1 = "https://www.analvids.com/models/page/1/"
+        self.logger.info(f"Daily: scraping analvids models page 1")
+
+        # Reset status so it gets re-scraped
+        if self.url_generator.is_url_done(anv_models_p1):
+            del self.url_generator.completed_urls[anv_models_p1]
+            self.url_generator.save_status()
+
+        response2 = scraper.scrape_batch(
+            [anv_models_p1],
+            max_concurrent=1,
+            url_config_names={anv_models_p1: "anvids_models_all"},
+        )[0]
+
+        if response2.result == ScrapeResult.SUCCESS and response2.filename:
+            items2 = extract_from_file(response2.filename)
+            new_items2, all_items2 = self._filter_novel_items(items2, set())
+            self.logger.info(
+                f"  analvids: {len(new_items2)} new models out of {len(all_items2)} total"
+            )
+
+            if new_items2:
+                self._append_items_to_csv(new_items2)
+                try:
+                    add_performers_from_items(new_items2)
+                except Exception as e:
+                    self.logger.error(f"DB error: {e}")
+
+                new_models = set()
+                for item in new_items2:
+                    performers_str = item.get("performers") or ""
+                    if performers_str and performers_str != "NO_NAME":
+                        for name in performers_str.split(";"):
+                            n = name.strip()
+                            if n:
+                                new_models.add(n)
+
+                if new_models:
+                    names_shown = list(new_models)[:5]
+                    suffix = "..." if len(new_models) > 5 else ""
+                    self.logger.info(
+                        f"  analvids fresh models: {', '.join(names_shown)}{suffix}"
+                    )
+                self.logger.info(f"  ✓ analvids: {len(new_items2)} new models added")
+            else:
+                self.logger.info("  ✓ analvids: no new models")
+
+            # Mark page 1 done with novelty count
+            self.url_generator.mark_url_done(anv_models_p1, tag=f"X{len(new_items2)}")
+        else:
+            self.logger.error(f"  ✗ analvids failed: {response2.error_message}")
+            self.url_generator.mark_url_done(anv_models_p1, tag="X0")
+
     def cleanup_crawls(self, keep_last_n: int = 5) -> None:
         """
         Remove old crawl directories, keeping only the most recent N.
@@ -673,7 +793,10 @@ def main():
     """
     Scrape sites, extract performer data, and store in the database.
 
-    Daily update (scrapes 3 fresh pages from each site):
+    Daily update (sxyprn main page + analvids models page 1):
+      uv run python orchestator.py --daily
+
+    Scrape 3 fresh pages from each site:
       uv run python orchestator.py
 
     More pages or specific site:
@@ -716,8 +839,19 @@ def main():
         "--max-profiles", type=int, default=None,
         help="Limit profiles to scrape (mit --fetch-profiles)",
     )
+    parser.add_argument(
+        "--daily", action="store_true",
+        help="Daily: scrape sxyprn main page + analvids models page 1 for fresh performers",
+    )
 
     args = parser.parse_args()
+
+    if args.daily:
+        logger.info("Daily sxyprn update: re-scraping page 0 for fresh performers...")
+        orchestator = Orchestator()
+        orchestator.daily_update()
+        logger.info(f'Done — https://booksi.duckdns.org:8007/performers/')
+        return
 
     if args.fetch_profiles:
         from profile_scraper import fetch_profiles

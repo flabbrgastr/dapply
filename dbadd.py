@@ -118,7 +118,8 @@ def create_db(db_path):
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             crawls INTEGER DEFAULT 0,
             aka TEXT,
-            rating TEXT
+            rating TEXT,
+            blocked INTEGER DEFAULT 0
         )
     ''')
 
@@ -154,6 +155,8 @@ def create_db(db_path):
         cursor.execute("ALTER TABLE performers ADD COLUMN last_seen TIMESTAMP")
     if 'refdb_status' not in columns:
         cursor.execute("ALTER TABLE performers ADD COLUMN refdb_status TEXT DEFAULT NULL")
+    if 'blocked' not in columns:
+        cursor.execute("ALTER TABLE performers ADD COLUMN blocked INTEGER DEFAULT 0")
 
     # ── Non-performer tags table (blocklist for sxyprn data-subkey values) ──
     cursor.execute('''
@@ -315,9 +318,9 @@ def add_performers_from_items(items, db_path="performers.db"):
     cursor = conn.cursor()
 
     # Load all existing performers for fuzzy matching
-    cursor.execute("SELECT id, name, urls, crawls, aka, validated FROM performers")
+    cursor.execute("SELECT id, name, urls, crawls, aka, validated, blocked FROM performers")
     all_rows = cursor.fetchall()
-    perf_by_name: dict = {row[1]: {"id": row[0], "urls": row[2], "crawls": row[3], "aka": row[4] or "", "validated": bool(row[5])} for row in all_rows}
+    perf_by_name: dict = {row[1]: {"id": row[0], "urls": row[2], "crawls": row[3], "aka": row[4] or "", "validated": bool(row[5]), "blocked": bool(row[6])} for row in all_rows}
     perf_names: list = list(perf_by_name.keys())
 
     new_performers_added = []
@@ -325,14 +328,19 @@ def add_performers_from_items(items, db_path="performers.db"):
     fuzzy_merged: list = []  # Track fuzzy merges for aka updates
 
     def _find_performer(name: str):
-        """Find performer by exact or fuzzy name match."""
+        """Find performer by exact or fuzzy name match, skipping blocked performers."""
         if name in perf_by_name:
-            return name, perf_by_name[name]
+            candidate = perf_by_name[name]
+            if not candidate.get("blocked"):
+                return name, candidate
+            return None, None
         # Fuzzy match
         matches = difflib.get_close_matches(name, perf_names, n=1, cutoff=0.85)
         if matches:
             matched = matches[0]
-            return matched, perf_by_name[matched]
+            candidate = perf_by_name[matched]
+            if not candidate.get("blocked"):
+                return matched, candidate
         return None, None
 
     for row in items:

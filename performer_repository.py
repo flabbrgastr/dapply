@@ -44,6 +44,7 @@ class PerformerRepository(ABC):
     @abstractmethod
     def search(self, q: str = "", sort_by: str = "name", sort_order: str = "asc",
                show_aliases: bool = False, dap_only: bool = False,
+               has_preview: bool = False, hide_ghosts: bool = False,
                limit: Optional[int] = None) -> List[dict]:
         """Search/filter performers with left-joined features."""
 
@@ -105,6 +106,14 @@ class PerformerRepository(ABC):
     def update_seen_dates(self, performer_id: int,
                           publish_date: Optional[str] = None) -> None:
         """Update first_seen/last_seen based on a publish date."""
+
+    @abstractmethod
+    def block(self, performer_id: int) -> None:
+        """Mark a performer as blocked so it is skipped in future updates."""
+
+    @abstractmethod
+    def unblock(self, performer_id: int) -> None:
+        """Unblock a previously blocked performer."""
 
     @abstractmethod
     def delete(self, performer_id: int) -> None:
@@ -262,8 +271,24 @@ class PerformerRepository(ABC):
         """Insert a manually-confirmed performer name into refdb_models + validated tags."""
 
     @abstractmethod
-    def get_profile_image(self, name: str) -> Optional[str]:
-        """Return the cached local profile image path for a performer name, or None."""
+    def get_profile_image(self, name: str, image_override: Optional[str] = None) -> Optional[str]:
+        """Return the cached local profile image path for a performer name, or None.
+
+        Args:
+            name: Performer name used for the name-based lookup.
+            image_override: If provided (non-empty), returned directly so a manually
+                corrected photo takes precedence over the automatic name match.
+        """
+
+    def find_refdb_model_by_name(self, name: str, performer_id: Optional[int] = None) -> Optional[dict]:
+        """Find a refdb model by exact (case-insensitive) name.
+
+        If ``performer_id`` is given and that performer has an explicit
+        ``refdb_model_id``, that model is returned first.
+
+        Returns a dict with at least ``id``, ``name``, ``profile_url`` (or None),
+        or None when no model matches.
+        """
 
     @abstractmethod
     def save_profile_image(self, model_id: int, image_url: str, local_path: str) -> None:
@@ -284,6 +309,25 @@ class PerformerRepository(ABC):
     @abstractmethod
     def ensure_schema(self) -> None:
         """Create tables and migrate if needed."""
+
+    @abstractmethod
+    def set_refdb_model_id(self, performer_id: int, model_id: int) -> None:
+        """Set the explicit refdb model id for a performer."""
+
+    @abstractmethod
+    def clear_refdb_model_id(self, performer_id: int) -> None:
+        """Remove any explicit refdb model association for a performer."""
+
+    @abstractmethod
+    def find_refdb_id_by_url(self, profile_url: str) -> Optional[int]:
+        """Find a refdb model's internal id by profile URL.
+        Returns None if not found.
+        """
+
+    @abstractmethod
+    def insert_refdb_model(self, name: str, profile_url: str = "",
+                           nationality: Optional[str] = None) -> int:
+        """Insert a new refdb model. Returns the new model id."""
 
 
 # ── SQLite adapter ────────────────────────────────────────
@@ -311,9 +355,9 @@ class SqlitePerformerRepository(PerformerRepository):
     # ── Performers ──
 
     def search(self, q="", sort_by="name", sort_order="asc",
-               show_aliases=False, dap_only=False, limit=None) -> List[dict]:
+               show_aliases=False, dap_only=False, has_preview=False, hide_ghosts=False, hide_blocked=False, tag=None, limit=None) -> List[dict]:
         valid_cols = ["id", "name", "last_updated", "crawls",
-                      "rating", "first_seen", "last_seen"]
+                      "rating", "first_seen", "last_seen", "has_preview"]
         if sort_by not in valid_cols:
             sort_by = "name"
         if sort_order not in ("asc", "desc"):
@@ -325,12 +369,20 @@ class SqlitePerformerRepository(PerformerRepository):
             conditions.append("(p.crawls > 0 OR p.validated = 1)")
         if dap_only:
             conditions.append("(pf.tags LIKE '%Double anal%' OR pf.tags LIKE '%DAP%')")
+        if hide_ghosts:
+            conditions.append("NOT (p.validated = 1 AND p.crawls = 0 AND COALESCE(ic.cnt, 0) = 0)")
+        if hide_blocked:
+            conditions.append("COALESCE(p.blocked, 0) = 0")
+        if tag:
+            conditions.append("pf.tags LIKE ?")
+            params.append(f"%{tag}%")
         if q:
             conditions.append("(p.name LIKE ? OR p.aka LIKE ?)")
             like_q = f"%{q}%"
             params.extend([like_q, like_q])
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        order_clause = "" if sort_by == "has_preview" else f"ORDER BY p.{sort_by} {sort_order}"
         query = f"""
             SELECT p.*, pf.nationality, pf.age, pf.tags, pf.scene_count,
                    p.refdb_status,
@@ -342,10 +394,13 @@ class SqlitePerformerRepository(PerformerRepository):
                 FROM items GROUP BY performer_id
             ) ic ON ic.performer_id = p.id
             {where}
-            ORDER BY p.{sort_by} {sort_order}
+            {order_clause}
         """
         conn = self._conn()
         rows = conn.execute(query, params).fetchall()
+        imaged_names = {r[0].lower() for r in conn.execute(
+            "SELECT LOWER(m.name) FROM performer_images pi JOIN refdb_models m ON m.id = pi.model_id"
+        ).fetchall()}
         conn.close()
 
         results = []
@@ -357,8 +412,14 @@ class SqlitePerformerRepository(PerformerRepository):
             d["scene_count"] = d.pop("scene_count", None) or 0
             d["item_count"] = d.pop("item_count", 0) or 0
             d["refdb_match"] = d.pop("refdb_status", None) or "unmatched"
+            d["has_preview"] = ((d.get("name") or "").lower() in imaged_names) or bool(d.get("image_override"))
             results.append(d)
 
+        if sort_by == "has_preview":
+            results.sort(key=lambda x: (0 if x.get("has_preview") else 1, x.get("name") or ""),
+                         reverse=(sort_order == "desc"))
+        if has_preview:
+            results = [r for r in results if r.get("has_preview")]
         if limit:
             results = results[:int(limit)]
         return results
@@ -548,6 +609,23 @@ class SqlitePerformerRepository(PerformerRepository):
         )
         conn.commit()
         conn.close()
+
+    def block(self, performer_id: int) -> None:
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE performers SET blocked = 1 WHERE id = ?", (performer_id,))
+            conn.execute("UPDATE items SET performer_id = NULL WHERE performer_id = ?", (performer_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def unblock(self, performer_id: int) -> None:
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE performers SET blocked = 0 WHERE id = ?", (performer_id,))
+            conn.commit()
+        finally:
+            conn.close()
 
     def delete(self, performer_id: int) -> None:
         conn = self._conn()
@@ -1055,7 +1133,9 @@ class SqlitePerformerRepository(PerformerRepository):
         finally:
             conn.close()
 
-    def get_profile_image(self, name: str) -> Optional[str]:
+    def get_profile_image(self, name: str, image_override: Optional[str] = None) -> Optional[str]:
+        if image_override:
+            return image_override
         if not name:
             return None
         conn = self._conn()
@@ -1067,6 +1147,115 @@ class SqlitePerformerRepository(PerformerRepository):
                 (name,),
             ).fetchone()
             return img[0] if img else None
+        finally:
+            conn.close()
+
+    def insert_refdb_model(self, name: str, profile_url: str = "",
+                           nationality: Optional[str] = None) -> int:
+        conn = self._conn()
+        try:
+            existing = conn.execute(
+                "SELECT id FROM refdb_models WHERE name = ?", (name,)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE refdb_models SET profile_url = ?, nationality = ? WHERE id = ?",
+                    (profile_url, nationality or "", existing[0]),
+                )
+                conn.commit()
+                return existing[0]
+            cur = conn.execute(
+                "INSERT INTO refdb_models (name, profile_url, nationality) VALUES (?, ?, ?)",
+                (name, profile_url, nationality or ""),
+            )
+            conn.commit()
+            return cur.lastrowid
+        finally:
+            conn.close()
+
+    def set_image_override(self, performer_id: int, url: str) -> None:
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE performers SET image_override = ? WHERE id = ?", (url, performer_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def clear_image_override(self, performer_id: int) -> None:
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE performers SET image_override = NULL WHERE id = ?", (performer_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def ensure_image_override_column(self) -> None:
+        conn = self._conn()
+        try:
+            conn.execute("ALTER TABLE performers ADD COLUMN image_override TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            conn.close()
+
+    def set_refdb_model_id(self, performer_id: int, model_id: int) -> None:
+        conn = self._conn()
+        try:
+            conn.execute(
+                "UPDATE performers SET refdb_model_id = ? WHERE id = ?",
+                (model_id, performer_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def clear_refdb_model_id(self, performer_id: int) -> None:
+        conn = self._conn()
+        try:
+            conn.execute(
+                "UPDATE performers SET refdb_model_id = NULL WHERE id = ?",
+                (performer_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def find_refdb_id_by_url(self, profile_url: str) -> Optional[int]:
+        if not profile_url:
+            return None
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT id FROM refdb_models WHERE profile_url = ? LIMIT 1",
+                (profile_url,),
+            ).fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+
+    def find_refdb_model_by_name(self, name: str, performer_id: Optional[int] = None) -> Optional[dict]:
+        if not name:
+            return None
+        conn = self._conn()
+        try:
+            # If performer has an explicit refdb_model_id, return that model
+            if performer_id:
+                row = conn.execute(
+                    "SELECT m.id, m.name, m.profile_url, m.scene_count "
+                    "FROM performers p JOIN refdb_models m ON m.id = p.refdb_model_id "
+                    "WHERE p.id = ?",
+                    (performer_id,),
+                ).fetchone()
+                if row:
+                    return dict(row)
+            # Fall back to name-based lookup
+            row = conn.execute(
+                "SELECT id, name, profile_url, scene_count FROM refdb_models "
+                "WHERE LOWER(name) = LOWER(?) LIMIT 1",
+                (name,),
+            ).fetchone()
+            return dict(row) if row else None
         finally:
             conn.close()
 
@@ -1168,7 +1357,7 @@ class InMemoryPerformerRepository(PerformerRepository):
     # ── Performers ──
 
     def search(self, q="", sort_by="name", sort_order="asc",
-               show_aliases=False, dap_only=False, limit=None) -> List[dict]:
+               show_aliases=False, dap_only=False, has_preview=False, hide_ghosts=False, tag=None, limit=None) -> List[dict]:
         results = []
         for p in self._performers.values():
             if not show_aliases and p["crawls"] == 0 and p["validated"] == 0:
@@ -1177,6 +1366,11 @@ class InMemoryPerformerRepository(PerformerRepository):
                 feat = self._features.get(p["id"])
                 tags = (feat.get("tags") or "") if feat else ""
                 if "Double anal" not in tags and "DAP" not in tags:
+                    continue
+            if tag:
+                feat = self._features.get(p["id"])
+                tags = (feat.get("tags") or "") if feat else ""
+                if tag.lower() not in tags.lower():
                     continue
             if q:
                 if q.lower() not in p["name"].lower() and \
@@ -1199,8 +1393,14 @@ class InMemoryPerformerRepository(PerformerRepository):
                 1 for it in self._items.values()
                 if it.get("performer_id") == p["id"]
             )
+            d["has_preview"] = bool(d.get("image_override"))
             results.append(d)
 
+        if has_preview:
+            results = [r for r in results if r.get("has_preview")]
+        if hide_ghosts:
+            results = [r for r in results
+                       if not (r.get("validated") and r.get("crawls") == 0 and (r.get("item_count") or 0) == 0)]
         reverse = sort_order == "desc"
         if sort_by == "name":
             results.sort(key=lambda x: x["name"], reverse=reverse)
@@ -1210,6 +1410,9 @@ class InMemoryPerformerRepository(PerformerRepository):
             results.sort(key=lambda x: x.get("last_updated") or "", reverse=reverse)
         elif sort_by in ("first_seen", "last_seen"):
             results.sort(key=lambda x: x.get(sort_by) or "", reverse=reverse)
+        elif sort_by == "has_preview":
+            results.sort(key=lambda x: (0 if x.get("has_preview") else 1, x.get("name") or ""),
+                         reverse=reverse)
 
         if limit:
             results = results[:int(limit)]
@@ -1295,6 +1498,14 @@ class InMemoryPerformerRepository(PerformerRepository):
                 p["first_seen"] = publish_date
             if not p["last_seen"] or publish_date > p["last_seen"]:
                 p["last_seen"] = publish_date
+
+    def block(self, performer_id: int) -> None:
+        if performer_id in self._performers:
+            self._performers[performer_id]["blocked"] = 1
+
+    def unblock(self, performer_id: int) -> None:
+        if performer_id in self._performers:
+            self._performers[performer_id]["blocked"] = 0
 
     def delete(self, performer_id: int) -> None:
         self._performers.pop(performer_id, None)
@@ -1483,13 +1694,64 @@ class InMemoryPerformerRepository(PerformerRepository):
         self._refdb_models[mid] = {"name": name, "image": None}
         self._refdb_names.append(name)
 
-    def get_profile_image(self, name: str) -> Optional[str]:
+    def get_profile_image(self, name: str, image_override: Optional[str] = None) -> Optional[str]:
+        if image_override:
+            return image_override
         if not name:
             return None
         for m in self._refdb_models.values():
             if m["name"].lower() == name.lower():
                 return m["image"]
         return None
+
+    def find_refdb_model_by_name(self, name: str, performer_id: Optional[int] = None) -> Optional[dict]:
+        if not name:
+            return None
+        # If performer has an explicit refdb_model_id, return that model
+        if performer_id and performer_id in self._performers:
+            refdb_mid = self._performers[performer_id].get("refdb_model_id")
+            if refdb_mid and refdb_mid in self._refdb_models:
+                m = self._refdb_models[refdb_mid]
+                return {"id": refdb_mid, "name": m["name"], "profile_url": m.get("profile_url"),
+                        "scene_count": m.get("scene_count")}
+        # Fall back to name-based lookup
+        for mid, m in self._refdb_models.items():
+            if m["name"].lower() == name.lower():
+                return {"id": mid, "name": m["name"], "profile_url": m.get("profile_url"),
+                        "scene_count": m.get("scene_count")}
+        return None
+
+    def set_image_override(self, performer_id: int, url: str) -> None:
+        if performer_id in self._performers:
+            self._performers[performer_id]["image_override"] = url
+
+    def clear_image_override(self, performer_id: int) -> None:
+        if performer_id in self._performers:
+            self._performers[performer_id].pop("image_override", None)
+
+    def set_refdb_model_id(self, performer_id: int, model_id: int) -> None:
+        if performer_id in self._performers:
+            self._performers[performer_id]["refdb_model_id"] = model_id
+
+    def clear_refdb_model_id(self, performer_id: int) -> None:
+        if performer_id in self._performers:
+            self._performers[performer_id].pop("refdb_model_id", None)
+
+    def find_refdb_id_by_url(self, profile_url: str) -> Optional[int]:
+        for mid, m in self._refdb_models.items():
+            if m.get("profile_url") == profile_url:
+                return mid
+        return None
+
+    def insert_refdb_model(self, name: str, profile_url: str = "",
+                           nationality: Optional[str] = None) -> int:
+        mid = len(self._refdb_models) + 1
+        self._refdb_models[mid] = {"name": name, "profile_url": profile_url,
+                                   "nationality": nationality or ""}
+        return mid
+
+    def ensure_image_override_column(self) -> None:
+        pass
 
     def save_profile_image(self, model_id: int, image_url: str, local_path: str) -> None:
         if model_id in self._refdb_models:

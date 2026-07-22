@@ -104,7 +104,7 @@ def _extract_sxyprn(soup, html_file_path):
         item_url = ""
         for link in container.find_all("a", href=True):
             href = link.get("href")
-            if "/post/" in href and ("?sk=" in href or "&sk=" in href):
+            if "/post/" in href:
                 # Extract the base post URL without session parameters for uniqueness
                 # e.g., https://sxyprn.com/post/63ed75271e1ce.html?sk=abc -> https://sxyprn.com/post/63ed75271e1ce.html
                 full_url = urljoin("https://sxyprn.com", href)

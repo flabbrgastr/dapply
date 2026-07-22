@@ -72,6 +72,7 @@
             <option value="last_seen">Last Seen</option>
             <option value="crawls">Crawls</option>
             <option value="rating">Rating</option>
+            <option value="has_preview">Preview</option>
           </select>
           <select id="sort-order" onchange="applySort()">
             <option value="asc">Ascending</option>
@@ -82,12 +83,25 @@
             Show AKA aliases
           </label>
           <label style="margin-left:15px; font-size:13px;">
-            <input type="checkbox" id="dap-only" onchange="loadPerformers()">
-            🔞 DAP only
+            <input type="checkbox" id="has-preview" onchange="loadPerformers()">
+            📷 Has preview
           </label>
+          <label style="margin-left:15px; font-size:13px;">
+            <input type="checkbox" id="hide-ghosts" onchange="loadPerformers()" checked>
+            🧹 Hide empty (refdb-only)
+          </label>
+          <label style="margin-left:15px; font-size:13px;">
+            <input type="checkbox" id="dap-only" onchange="loadPerformers()" checked>
+            🎯 DAP only
+          </label>
+          <span id="active-tag" style="margin-left:15px; font-size:13px; display:none; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; border:1px solid var(--accent, #3b82f6); color:var(--text);"></span>
           <label style="margin-left:15px; font-size:13px;">
             <input type="checkbox" id="hide-novideos" onchange="renderFiltered()" checked>
             Hide no videos
+          </label>
+          <label style="margin-left:15px; font-size:13px;">
+            <input type="checkbox" id="hide-blocked" onchange="loadPerformers()" checked>
+            🚫 Hide blocked
           </label>
         </div>
         <div>
@@ -105,11 +119,13 @@
         <thead>
           <tr>
             <th onclick="sortTable('name')">Name</th>
-            <th onclick="sortTable('aka')">AKA</th>
+            <th style="width:150px; max-width:150px;">AKA</th>
             <th>Ref</th>
             <th>Nat</th>
-            <th>Age</th>
-            <th onclick="sortTable('crawls')">Crawls</th>
+            <th style="width:42px; max-width:42px; text-align:center;" onclick="sortTable('age')" title="Age">Age</th>
+            <th style="width:52px; max-width:52px; text-align:center;" onclick="sortTable('crawls')" title="Crawls">Cr</th>
+            <th style="width:64px; max-width:64px; text-align:center; font-size:11px;" onclick="sortTable('first_seen')" title="First seen">1st</th>
+            <th style="width:64px; max-width:64px; text-align:center; font-size:11px;" onclick="sortTable('last_seen')" title="Last seen">Last</th>
             <th onclick="sortTable('rating')">Rating</th>
             <th>Actions</th>
           </tr>
@@ -121,21 +137,19 @@
       <div id="performer-items-section" style="display: none; margin-top: 20px">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
           <button class="back-btn" onclick="goBackToPerformers()" style="font-size:13px; padding:4px 10px;">← Back</button>
-          <h2 id="items-header" style="margin:0; font-size:18px; font-weight:600;"></h2>
-          <span id="feat-badges" style="display:flex; gap:6px; align-items:center; font-size:12px; color:var(--text2);"></span>
+          <h2 id="items-header" style="margin:0; font-size:18px; font-weight:600; display:flex; align-items:center; gap:12px;"></h2>
         </div>
 
-        <div id="features-panel" style="display:none; margin-bottom:12px; padding:10px 14px; background:var(--surface2); border-radius:6px; font-size:13px;">
-          <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-            <span id="feat-aka" style="color:var(--text2);"></span>
-            <span id="feat-nat"></span>
-            <span id="feat-age"></span>
-            <span id="feat-scenes"></span>
-            <span id="feat-dates" style="color:var(--text2);"></span>
-          </div>
-          <div id="feat-tags" style="margin-top:6px; display:flex; flex-wrap:wrap; gap:3px;"></div>
+        <div id="features-panel" style="display:none;">
+          <div id="performer-meta" style="font-size:13px;"></div>
         </div>
 
+        <div id="bulk-actions" style="display:none; align-items:center; gap:8px; padding:6px 10px; background:var(--surface2); border-radius:6px; margin-bottom:6px;">
+          <span id="bulk-selected-count" style="font-size:13px; color:var(--text2);"></span>
+          <button onclick="bulkReassignSelected()" style="background:#2196F3; color:white; border:none; border-radius:4px; padding:4px 10px; font-size:12px; cursor:pointer;">→ Reassign selected</button>
+          <button onclick="bulkUnassignSelected()" style="background:#f44336; color:white; border:none; border-radius:4px; padding:4px 10px; font-size:12px; cursor:pointer;">⊘ Unassign selected</button>
+          <button onclick="selectedItemIds.clear(); updateBulkActions(); document.querySelectorAll('#items-list input[type=checkbox]').forEach(c=>c.checked=false)" style="background:none; border:1px solid var(--border); color:var(--text2); border-radius:4px; padding:4px 10px; font-size:12px; cursor:pointer;">Cancel</button>
+        </div>
         <div id="items-list" style="display:flex; flex-direction:column; gap:4px;"></div>
         <button id="items-more-btn" onclick="renderItemsPage()" style="display:none; margin-top:8px; background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:6px; cursor:pointer; font-size:13px; width:100%;"></button>
       </div>
@@ -143,7 +157,7 @@
       <!-- Edit / Merge modal -->
       <div id="performer-edit-modal" style="display:none;">
         <div class="modal">
-          <div class="modal-content" style="max-width: 500px;">
+          <div class="modal-content" style="max-width: 560px;">
             <span class="close" onclick="closeEditModal()">&times;</span>
             <h3>Edit / Merge</h3>
             <div style="margin: 12px 0;">
@@ -152,29 +166,59 @@
             </div>
             <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
             <div style="margin: 12px 0;">
+              <label style="font-size:13px;"><strong>🧑 Current Model</strong> <span id="current-model-info" style="color:var(--text2); font-weight:normal;">loading…</span></label>
+              <div id="current-model-display" style="margin-top:4px; padding:6px 8px; background:var(--surface2); border-radius:6px; font-size:12px;"></div>
+            </div>
+            <div style="margin: 12px 0;">
+              <label style="font-size:13px;"><strong>🔍 Search Models</strong> <span style="color:var(--text2); font-weight:normal;">by name from analvids</span></label>
+              <div style="display:flex; gap:6px; margin-top:2px;">
+                <input type="text" id="model-search" placeholder="Search models…" autocomplete="off"
+                  style="flex:1; padding:8px;"
+                  oninput="searchRefdbModels(this.value)"
+                  onkeydown="if(['ArrowDown','ArrowUp','Enter'].includes(event.key)){event.preventDefault(); if(event.key==='ArrowDown') highlightModelResult((document.getElementById('model-search-results')._idx||-1)+1); else if(event.key==='ArrowUp') highlightModelResult((document.getElementById('model-search-results')._idx||-1)-1); else activateModelResult();}"
+                  onblur="setTimeout(() => document.getElementById('model-search-results').style.display='none', 300)"
+                  onfocus="if(this.value) searchRefdbModels(this.value)" />
+                <div id="model-search-results" style="display:none; position:absolute; z-index:10; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:260px; overflow-y:auto; border-radius:6px; margin-top:2px;"></div>
+              </div>
+            </div>
+            <div style="margin: 12px 0;">
+              <label style="font-size:13px;"><strong>Or paste analvids URL</strong></label>
+              <div style="display:flex; gap:6px; margin-top:2px;">
+                <input type="text" id="analvids-url" placeholder="https://www.analvids.com/model/…" style="flex:1; padding:8px;" onpaste="if(this.value.trim()) fetchAnalvids()" />
+                <button class="btn" onclick="fetchAnalvids()" id="fetch-analvids-btn" style="background:#2196F3; color:white; white-space:nowrap;">🔍 Fetch</button>
+              </div>
+              <small style="color:var(--text2); font-size:11px;">Paste a model URL like <code>https://www.analvids.com/model/12345/name</code> and it auto-fetches.</small>
+              <div id="lookup-results" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border-radius:6px; font-size:13px;"></div>
+            </div>
+            <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
+            <div style="margin: 12px 0;">
               <label style="font-size:13px;"><strong>Merge into existing</strong></label>
               <div style="position:relative;">
-                <input type="text" id="reassign-target" placeholder="Search existing performers..." autocomplete="off"
+                <input type="text" id="reassign-target" placeholder="Search existing performers…" autocomplete="off"
                   style="width:100%; padding:8px; margin-top:2px;"
                   oninput="searchReassignTarget(this.value)"
                   onblur="setTimeout(() => document.getElementById('reassign-suggestions').style.display='none', 200)"
                   onfocus="if(this.value) searchReassignTarget(this.value)" />
                 <div id="reassign-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:200px; overflow-y:auto; z-index:10;"></div>
               </div>
-            </div>
-            <div style="margin: 12px 0;">
-              <label style="font-size:13px;"><strong>Or import from analvids</strong></label>
-              <div style="display:flex; gap:6px; margin-top:2px;">
-                <input type="text" id="analvids-url" placeholder="Paste analvids.com/model/... URL" style="flex:1; padding:8px;" />
-                <button class="btn" onclick="fetchAnalvids()" id="fetch-analvids-btn" style="background:#2196F3; color:white; white-space:nowrap;">🔍 Fetch</button>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <button class="btn" onclick="saveReassign()" style="background:#ff9800; color:white; font-size:13px;">🔀 Merge &amp; Delete</button>
+                <button class="btn" onclick="saveReassignKeep()" style="background:#ff9800; color:white; font-size:13px; opacity:0.85;">🔀 Merge &amp; Keep</button>
               </div>
-              <div id="lookup-results" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border-radius:6px; font-size:13px;"></div>
+              <small style="color:var(--text2); font-size:11px;">Merge moves all items to the target performer. “Delete” removes this performer afterward; “Keep” leaves it as a ghost.</small>
+            </div>
+            <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
+            <div style="margin: 12px 0;">
+              <label style="font-size:13px;"><strong>Unassign</strong></label>
+              <div style="display:flex; gap:8px; margin-top:6px;">
+                <button class="btn" onclick="unassignAllItems()" style="background:#f44336; color:white; font-size:13px;">⊘ Unassign all items</button>
+              </div>
+              <small style="color:var(--text2); font-size:11px;">Removes this performer from all items. Items become unassigned.</small>
             </div>
             <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
             <div style="display:flex; gap:8px; justify-content:flex-end;">
               <button class="btn" onclick="closeEditModal()" style="font-size:13px;">Cancel</button>
               <button class="btn" onclick="saveEdit()" style="background:#4CAF50; color:white; font-size:13px;">💾 Save</button>
-              <button class="btn" onclick="saveReassign()" style="background:#ff9800; color:white; font-size:13px;">🔀 Merge &amp; Delete</button>
             </div>
           </div>
         </div>
@@ -321,32 +365,179 @@
 
       // Rating tags are free-text, comma-separated; the legend below is the hint (no dropdown selector).
       let currentSort = { column: "name", order: "asc" };
+      let currentTagFilter = null;
+
+      function makeTagChip(t) {
+        const chip = document.createElement("span");
+        chip.textContent = t;
+        const active = currentTagFilter === t;
+        chip.style.cssText = "cursor:pointer; user-select:none; padding:2px 8px; border-radius:12px; font-size:11px; border:1px solid var(--border); " + (active ? "background:var(--accent, #3b82f6); color:#fff;" : "background:var(--surface); color:var(--text2);");
+        chip.onclick = () => toggleTagFilter(t);
+        return chip;
+      }
+
+      function toggleTagFilter(tag) {
+        currentTagFilter = (currentTagFilter === tag) ? null : tag;
+        document.querySelectorAll("#tags-section span").forEach(c => {
+          const active = c.textContent === currentTagFilter;
+          c.style.background = active ? "var(--accent, #3b82f6)" : "var(--surface)";
+          c.style.color = active ? "#fff" : "var(--text2)";
+        });
+        updateActiveTagIndicator();
+        loadPerformers();
+      }
+
+      function updateActiveTagIndicator() {
+        const el = document.getElementById("active-tag");
+        if (!el) return;
+        if (currentTagFilter) {
+          el.style.display = "inline-flex";
+          el.innerHTML = `🔖 ${currentTagFilter} <span style="cursor:pointer; margin-left:6px; color:var(--accent, #3b82f6); font-weight:700;" onclick="toggleTagFilter(currentTagFilter)">✕</span>`;
+        } else {
+          el.style.display = "none";
+        }
+      }
       let currentPerformerId = null;
       let searchTimer = null;
       document.getElementById("theme-css").href = BASE + "/static/style.css";
+
+      // ── Tag autocomplete (rating/tags field) ──
+      // Controlled vocabulary used in the rating field (see legend above).
+      const TAG_VOCAB = ["beau", "raw", "+", "++", "-", "--", "fng", "dedup", "?", "!", "!!"];
+      let tagAcEl = null;
+      let tagAcInput = null;
+      let tagAcItems = [];
+      let tagAcIndex = -1;
+
+      function ensureTagAc() {
+        if (tagAcEl) return;
+        tagAcEl = document.createElement("div");
+        tagAcEl.id = "tag-ac";
+        tagAcEl.style.cssText = "position:absolute; z-index:2000; display:none; background:var(--surface2); border:1px solid var(--border); border-radius:6px; max-height:220px; overflow-y:auto; font-size:13px; box-shadow:0 6px 22px rgba(0,0,0,.4); min-width:140px;";
+        document.body.appendChild(tagAcEl);
+        document.addEventListener("mousedown", (e) => {
+          if (tagAcEl && tagAcEl.style.display !== "none" && !tagAcEl.contains(e.target) && e.target !== tagAcInput) hideTagAc();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (!tagAcEl || tagAcEl.style.display === "none" || !tagAcInput) return;
+          if (e.key === "ArrowDown") { e.preventDefault(); tagAcIndex = Math.min(tagAcIndex + 1, tagAcItems.length - 1); renderTagAc(); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); tagAcIndex = Math.max(tagAcIndex - 1, 0); renderTagAc(); }
+          else if (e.key === "Enter" || e.key === "Tab") { if (tagAcIndex >= 0 && tagAcItems[tagAcIndex]) { e.preventDefault(); applyTagAc(tagAcItems[tagAcIndex]); } }
+          else if (e.key === "Escape") { hideTagAc(); }
+        });
+      }
+
+      function currentTagToken(val) {
+        const parts = val.split(",");
+        return parts[parts.length - 1].trimStart();
+      }
+
+      function updateTagAc() {
+        if (!tagAcInput) return;
+        const token = currentTagToken(tagAcInput.value).toLowerCase();
+        if (token === "") {
+          tagAcItems = TAG_VOCAB.slice();
+        } else {
+          tagAcItems = TAG_VOCAB.filter(t => t.toLowerCase().startsWith(token) && t.toLowerCase() !== token);
+          if (tagAcItems.length === 0) { hideTagAc(); return; }
+        }
+        tagAcIndex = 0;
+        renderTagAc();
+        tagAcEl.style.display = "block";
+        positionTagAc();
+      }
+
+      function renderTagAc() {
+        tagAcEl.innerHTML = "";
+        tagAcItems.forEach((t, i) => {
+          const div = document.createElement("div");
+          div.className = "tag-ac-item";
+          div.style.cssText = "padding:6px 12px; cursor:pointer; white-space:nowrap;" + (i === tagAcIndex ? " background:var(--accent); color:#fff;" : " color:var(--text);");
+          div.textContent = t;
+          div.addEventListener("mousedown", (e) => { e.preventDefault(); applyTagAc(t); });
+          div.addEventListener("mouseenter", () => { tagAcIndex = i; renderTagAc(); });
+          tagAcEl.appendChild(div);
+        });
+      }
+
+      function positionTagAc() {
+        if (!tagAcInput) return;
+        const r = tagAcInput.getBoundingClientRect();
+        tagAcEl.style.left = r.left + window.scrollX + "px";
+        tagAcEl.style.top = r.bottom + window.scrollY + "px";
+      }
+
+      function hideTagAc() { if (tagAcEl) tagAcEl.style.display = "none"; tagAcInput = null; tagAcIndex = -1; }
+
+      function applyTagAc(tag) {
+        if (!tagAcInput) return;
+        const val = tagAcInput.value;
+        const idx = val.lastIndexOf(",");
+        const head = idx >= 0 ? val.slice(0, idx + 1).replace(/\s+$/, "") : "";
+        tagAcInput.value = (head ? head + " " : "") + tag + ", ";
+        // Fire change event so onchange handlers (e.g. updateRating) fire immediately
+        tagAcInput.dispatchEvent(new Event("change", { bubbles: true }));
+        tagAcInput.focus();
+        hideTagAc();
+      }
+
+      function attachTagAutocomplete(input) {
+        if (!input || input._tagAcAttached) return;
+        input._tagAcAttached = true;
+        input.setAttribute("autocomplete", "off");
+        input.addEventListener("input", () => { ensureTagAc(); tagAcInput = input; updateTagAc(); });
+        input.addEventListener("focus", () => { ensureTagAc(); tagAcInput = input; updateTagAc(); });
+      }
+
+      function formatAge(days) {
+        // Compact age display: days max 7, weeks max 4, months max 11, years max 2, then year.
+        if (days < 1) return "today";
+        if (days <= 11) return days + "d";
+        if (days <= 77) return Math.floor(days / 7) + "w";
+        if (days <= 335) {
+          const m = Math.min(Math.floor(days / 30), 11);
+          return (m < 1 ? 1 : m) + "m";
+        }
+        if (days <= 1095) {
+          const y = Math.min(Math.round(days / 365), 3);
+          return (y < 1 ? 1 : y) + "y";
+        }
+        // 3+ years: show the year number
+        const yrs = Math.floor(days / 365);
+        return String(new Date().getFullYear() - yrs);
+      }
 
       function formatDate(dateStr) {
         if (!dateStr) return "—";
         try {
           const d = new Date(dateStr.replace(" ", "T"));
-          const now = new Date();
-          const diffMs = now - d;
-          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          const diffMs = Date.now() - d;
+          const diffDays = Math.floor(diffMs / 86400000);
           if (diffDays === 0) return "today";
           if (diffDays === 1) return "yesterday";
-          if (diffDays < 30) return `${diffDays}d ago`;
-          if (diffDays < 365) {
-            const months = Math.floor(diffDays / 30);
-            return `${months}mo ago`;
-          }
-          return d.toLocaleDateString();
+          return formatAge(diffDays);
         } catch {
           return dateStr;
         }
       }
 
+      function formatSeen(v) {
+        if (!v) return "";
+        v = String(v).trim();
+        if (v[0] === "<") return v;
+        if (/^\d{4}$/.test(v)) return v;
+        const m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return v;
+        let dt;
+        try { dt = new Date(v.replace(" ", "T") + "Z"); } catch { return v; }
+        if (isNaN(dt.getTime())) return v;
+        const days = Math.floor((Date.now() - dt.getTime()) / 86400000);
+        return formatAge(days);
+      }
+
       document.addEventListener("DOMContentLoaded", function () {
         showPerformers();
+        attachTagAutocomplete(document.getElementById("new-rating"));
         if (/\/stats$/.test(window.location.pathname)) showStats();
         const hashMatch = location.hash.match(/^#performer-(\d+)$/);
         if (hashMatch) {
@@ -416,12 +607,17 @@
         const sortColumn = document.getElementById("sort-column").value;
         const sortOrder = document.getElementById("sort-order").value;
         const showAliases = document.getElementById("show-aliases").checked ? "1" : "0";
+        const hasPreview = document.getElementById("has-preview").checked ? "1" : "0";
+        const hideGhosts = document.getElementById("hide-ghosts").checked ? "1" : "0";
         const dapOnly = document.getElementById("dap-only").checked ? "1" : "0";
+        const hideBlocked = document.getElementById("hide-blocked").checked ? "1" : "0";
         const searchQ = document.getElementById("search-input").value.trim();
         currentSort.column = sortColumn;
         currentSort.order = sortOrder;
-        const params = new URLSearchParams({ sort_by: sortColumn, sort_order: sortOrder, show_aliases: showAliases, dap_only: dapOnly });
+        const params = new URLSearchParams({ sort_by: sortColumn, sort_order: sortOrder, show_aliases: showAliases, has_preview: hasPreview, hide_ghosts: hideGhosts, dap_only: dapOnly, hide_blocked: hideBlocked });
         if (searchQ) params.set("q", searchQ);
+        if (currentTagFilter) params.set("tag", currentTagFilter);
+        updateActiveTagIndicator();
         fetch(api("api/performers?" + params.toString()))
           .then(r => r.json())
           .then(data => { performersData = data; renderFiltered(); updateStats(); })
@@ -461,25 +657,43 @@
           }
           const nat = performer.nationality || "";
           const age = performer.age != null ? performer.age : "";
-          const nameHtml = `<a href="${BASE}/#performer-${performer.id}" target="_blank">${performer.name}</a>` +
+          // Small DAP/Anal badges from tags
+          const ptags = (performer.tags || "").toLowerCase();
+          const hasDap = ptags.includes("dap") || ptags.includes("double anal");
+          const hasAnal = ptags.includes("anal") && !ptags.includes("no anal");
+          let contentBadges = "";
+          if (hasDap) contentBadges += `<span style="display:inline-block;padding:0 4px;border-radius:3px;font-size:9px;font-weight:bold;background:rgba(233,30,99,0.15);color:#e91e63;margin:0 1px;line-height:16px;">DAP</span>`;
+          if (hasAnal) contentBadges += `<span style="display:inline-block;padding:0 4px;border-radius:3px;font-size:9px;font-weight:bold;background:rgba(124,58,237,0.15);color:#7c3aed;margin:0 1px;line-height:16px;">AN</span>`;
+          const cam = performer.has_preview
+            ? `<span title="Has photo preview" style="margin-right:5px;">📷</span>`
+            : `<span title="No photo" style="margin-right:5px; opacity:.2;">📷</span>`;
+          const nameHtml = `${cam}<a href="${BASE}/#performer-${performer.id}" target="_blank">${performer.name}</a>` +
             (performer.refdb_match === "unmatched" || performer.refdb_match === "fuzzy"
               ? `<button onclick="confirmPerformer(${performer.id}, '${n}')" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px;" title="Confirm or correct name">✎</button>`
               : "");
           const ratingVal = String(performer.rating == null ? "" : performer.rating)
             .replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           const ratingHtml = `<input type="text" class="rating-input" id="rating-${performer.id}" value="${ratingVal}" maxlength="80" placeholder="tags, comma-separated…" title="${ratingTitle}" onchange="updateRating(${performer.id})">`;
+          const akaRaw = performer.aka || "";
+          const akaParts = akaRaw.split(",").map(s => s.trim()).filter(Boolean);
+          let aka = akaParts.slice(0, 2).join(", ");
+          if (akaParts.length > 2) aka += "…";
+          const akaTd = `<td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text2); font-size:12px;" title="${akaRaw.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}">${aka}</td>`;
           return `<tr>` +
             `<td style="white-space:nowrap;">${nameHtml}</td>` +
-            `<td>${performer.aka || ""}</td>` +
-            `<td>${refdbBadge}</td>` +
+            akaTd +
+            `<td>${refdbBadge}${contentBadges}</td>` +
             `<td>${nat}</td>` +
-            `<td>${age}</td>` +
-            `<td>${performer.crawls || 0}</td>` +
+            `<td style="width:42px; max-width:42px; text-align:center; font-size:12px;">${age}</td>` +
+            `<td style="width:52px; max-width:52px; text-align:center; font-size:12px;">${performer.crawls || 0}</td>` +
+            `<td style="width:64px; max-width:64px; text-align:center; font-size:11px; color:var(--text2);" title="First seen: ${escHtml(performer.first_seen || "")}">${formatSeen(performer.first_seen)}</td>` +
+            `<td style="width:64px; max-width:64px; text-align:center; font-size:11px; color:var(--text2);" title="Last seen: ${escHtml(performer.last_seen || "")}">${formatSeen(performer.last_seen)}</td>` +
             `<td>${ratingHtml}</td>` +
             `<td><button class="row-x" onclick="deletePerformer(${performer.id})" title="Delete performer">×</button></td>` +
             `</tr>`;
         });
         tbody.innerHTML = rows.join("");
+        tbody.querySelectorAll(".rating-input").forEach(attachTagAutocomplete);
       }
 
       function hasContent(p) {
@@ -502,63 +716,295 @@
         if (location.hash !== "#performer-" + performerId) history.pushState(null, "", "#performer-" + performerId);
         document.getElementById("performers-table").style.display = "none";
         document.getElementById("performer-items-section").style.display = "block";
-        document.getElementById("items-header").textContent = `${performerName}`;
+        const header = document.getElementById("items-header");
+        const panel = document.getElementById("features-panel");
+        panel.innerHTML = "";
+        // Compact header: image + name + edit buttons + meta chips
+        // Build header via DOM to avoid HTML escaping hell
+        var headerDiv = document.createElement("div");
+        headerDiv.style.cssText = "display:flex; align-items:center; gap:10px;";
+        // Image wrapper
+        var imgWrap = document.createElement("div");
+        imgWrap.style.cssText = "flex-shrink:0;";
+        var img = document.createElement("img");
+        img.id = "perf-img";
+        img.alt = "";
+        img.style.cssText = "width:64px; height:64px; border-radius:8px; object-fit:cover; background:var(--surface); display:none;";
+        var placeholder = document.createElement("div");
+        placeholder.id = "perf-img-placeholder";
+        placeholder.style.cssText = "width:64px; height:64px; border-radius:8px; background:var(--surface); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--text2);";
+        placeholder.textContent = "\u27f3";
+        imgWrap.appendChild(placeholder);
+        imgWrap.appendChild(img);
+        headerDiv.appendChild(imgWrap);
+        // Name + meta
+        var nameWrap = document.createElement("div");
+        nameWrap.style.cssText = "flex:1; min-width:0;";
+        var strong = document.createElement("strong");
+        strong.style.cssText = "font-size:15px;";
+        strong.textContent = performerName;
+        nameWrap.appendChild(strong);
+        var metaChips = document.createElement("span");
+        metaChips.id = "meta-chips";
+        metaChips.style.cssText = "display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;";
+        nameWrap.appendChild(metaChips);
+        headerDiv.appendChild(nameWrap);
+        // Buttons column
+        var btnCol = document.createElement("div");
+        btnCol.style.cssText = "display:flex; flex-direction:column; gap:2px; align-items:flex-end;";
+        var editBtn = document.createElement("button");
+        editBtn.textContent = "\u270e";
+        editBtn.style.cssText = "background:none; border:1px solid var(--border); color:var(--text); border-radius:4px; padding:2px 8px; font-size:12px; cursor:pointer;";
+        editBtn.onclick = function() { confirmPerformer(performerId, performerName); };
+        editBtn.title = "Edit name / merge / reassign";
+        btnCol.appendChild(editBtn);
+        var fixBtn = document.createElement("button");
+        fixBtn.textContent = "\ud83d\udcf7";
+        fixBtn.style.cssText = "background:none; border:1px solid var(--border); color:var(--text); border-radius:4px; padding:2px 8px; font-size:12px; cursor:pointer;";
+        fixBtn.onclick = function() { fixPerformerImage(performerId); };
+        fixBtn.title = "Replace photo";
+        btnCol.appendChild(fixBtn);
+        headerDiv.appendChild(btnCol);
+        header.innerHTML = "";
+        header.appendChild(headerDiv);
+        // Fetch features + populate everything
         fetch(api("api/performers/" + performerId + "/features"))
-          .then(r => r.json())
-          .then(data => {
-            const panel = document.getElementById("features-panel");
-            const f = data.features;
-            if (f) {
-              const profileImg = data.profile_image ? `<img src="${data.profile_image}" alt="" style="width:50px; height:50px; border-radius:50%; object-fit:cover; flex-shrink:0;" onerror="this.style.display='none'">` : "";
-              document.getElementById("items-header").innerHTML = `${profileImg} ${performerName}`;
-              document.getElementById("feat-aka").innerHTML = data.aka ? `<strong>AKA:</strong> ${data.aka}` : "";
-              document.getElementById("feat-nat").innerHTML = f.nationality ? `${f.nationality}` : "";
-              document.getElementById("feat-age").innerHTML = f.age != null ? `${f.age}y` : "";
-              document.getElementById("feat-scenes").innerHTML = f.scene_count ? `${f.scene_count} scenes` : "";
-              document.getElementById("feat-dates").innerHTML =
-                `First seen ${formatDate(data.first_seen)} · Last seen ${formatDate(data.last_seen)}`;
-              document.getElementById("feat-badges").innerHTML = [
-                f.nationality ? `<span style="background:var(--surface); padding:2px 8px; border-radius:4px; border:1px solid var(--border);">${f.nationality}</span>` : "",
-                f.age != null ? `<span style="background:var(--surface); padding:2px 8px; border-radius:4px; border:1px solid var(--border);">${f.age}y</span>` : "",
-                f.scene_count ? `<span style="background:var(--surface); padding:2px 8px; border-radius:4px; border:1px solid var(--border);">${f.scene_count} scenes</span>` : "",
-              ].filter(Boolean).join("");
-              const tagDiv = document.getElementById("feat-tags");
-              tagDiv.innerHTML = "";
-              if (f.tags) {
-                const tags = f.tags.split(", ");
-                tags.slice(0, 15).forEach(t => {
-                  const badge = document.createElement("span");
-                  badge.style.cssText = "display:inline-block; padding:1px 6px; background:var(--surface); border:1px solid var(--border); border-radius:4px; font-size:11px; color:var(--text2);";
-                  badge.textContent = t;
-                  tagDiv.appendChild(badge);
-                });
-                if (tags.length > 15) {
-                  const more = document.createElement("span");
-                  more.style.cssText = "font-size:11px; color:var(--text2);";
-                  more.textContent = `+${tags.length - 15} more`;
-                  tagDiv.appendChild(more);
-                }
-              }
-              panel.style.display = "block";
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            // Auto-fetch image
+            if (!data.profile_image) {
+              fetch(api("api/performers/" + performerId + "/scrape-image"), { method: "POST" })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                  if (d.profile_image) {
+                    var img = document.getElementById("perf-img");
+                    if (img) img.src = d.profile_image;
+                    showToast("Fetched image from analvids");
+                  }
+                }).catch(function() {});
             } else {
-              panel.style.display = "none";
+              var img = document.getElementById("perf-img");
+              if (img) img.src = data.profile_image;
+            }
+            var f = data.features;
+            var chips = [];
+            if (f) {
+              if (f.nationality) chips.push(f.nationality);
+              if (f.age != null) chips.push(f.age + "y");
+              if (f.scene_count) chips.push(f.scene_count + " scenes");
+              var allTags = (f.tags || "").toLowerCase();
+              if (allTags.indexOf("dap") >= 0 || allTags.indexOf("double anal") >= 0) {
+                chips.push('<span style="color:#e91e63;font-weight:bold;">DAP</span>');
+              }
+              if (allTags.indexOf("anal") >= 0 && allTags.indexOf("no anal") < 0) {
+                chips.push('<span style="color:#7c3aed;font-weight:bold;">Anal</span>');
+              }
+            }
+            if (data.first_seen || data.last_seen) {
+              chips.push("first " + formatDate(data.first_seen) + " \\u00b7 last " + formatDate(data.last_seen));
+            }
+            document.getElementById("meta-chips").innerHTML = chips
+              .map(function(c) { return '<span style="background:var(--surface); padding:1px 6px; border-radius:4px; border:1px solid var(--border); font-size:11px;">' + c + '</span>'; })
+              .join("");
+            // Compact info block below header
+            var html = "";
+            if (data.aka) {
+              html += '<div style="font-size:12px; color:var(--text2); margin-bottom:4px;"><strong>AKA:</strong> ' + escHtml(data.aka) + '</div>';
+            }
+            html += '<div id="model-line" style="font-size:12px; margin-bottom:4px;"></div>';
+            html += '<div id="tags-section" style="font-size:12px;"></div>';
+            html += '<div id="inline-edit-area" style="display:none; margin-top:8px; padding:8px; background:var(--surface2); border-radius:6px;"></div>';
+            panel.innerHTML = html;
+            panel.style.display = "block";
+            // Load model
+            fetch(api("api/performers/" + performerId + "/model"))
+              .then(function(r) { return r.json(); })
+              .then(function(m) {
+                var ml = document.getElementById("model-line");
+                if (m.profile_url) {
+                  var shortUrl = m.profile_url.replace(/https?:\/\//, "");
+                  ml.innerHTML = '<span style="color:var(--text2);">\\ud83d\\udcce </span><a href="' + escHtml(m.profile_url) + '" target="_blank" style="color:var(--accent);">' + escHtml(shortUrl) + '</a>' +
+                    ' <button onclick="editModelInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Change model URL">\\u270e</button>' +
+                    ' <button onclick="clearPerformerModel(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Clear model">\\u2715</button>';
+                } else {
+                  ml.innerHTML = '<span style="color:var(--text2);">\\ud83d\\udcce Model: none</span>' +
+                    ' <button onclick="editModelInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;">+ Assign</button>';
+                }
+              }).catch(function() {});
+            // Load tags
+            var ts = document.getElementById("tags-section");
+            if (f && f.tags) {
+              var tagList = f.tags.split(", ").filter(function(t) { return t.trim(); });
+              var maxShow = 8;
+              var tagChips = tagList.slice(0, maxShow).map(function(t) { return makeTagChip(t); });
+              var moreCount = tagList.length - maxShow;
+              ts.innerHTML = '<span style="color:var(--text2);">\\ud83c\\udff7\\ufe0f </span>';
+              for (var ti = 0; ti < tagChips.length; ti++) { ts.appendChild(tagChips[ti]); }
+              if (moreCount > 0) {
+                var more = document.createElement("span");
+                more.style.cssText = "font-size:11px; color:var(--text2); cursor:pointer; margin-left:4px;";
+                more.textContent = "+" + moreCount + " more";
+                more.onclick = (function(tl, pid) {
+                  return function() {
+                    var ts2 = document.getElementById("tags-section");
+                    ts2.innerHTML = '<span style="color:var(--text2);">\\ud83c\\udff7\\ufe0f </span>';
+                    for (var j = 0; j < tl.length; j++) { ts2.appendChild(makeTagChip(tl[j])); }
+                    ts2.appendChild(editTagsBtn(pid, tl.join(", ")));
+                  };
+                })(tagList, performerId);
+                ts.appendChild(more);
+              }
+              ts.appendChild(editTagsBtn(performerId, f.tags));
+            } else {
+              ts.innerHTML = '<span style="color:var(--text2);">\\ud83c\\udff7\\ufe0f No tags</span>' +
+                ' <button onclick="editTagsInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;">+ Add</button>';
             }
           })
-          .catch(() => {});
+          .catch(function() {});
         loadItemsList(performerId);
+      }
+
+      function editTagsBtn(pid, currentTags) {
+        var btn = document.createElement("button");
+        btn.style.cssText = "background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px; margin-left:4px;";
+        btn.textContent = "\\u270f\\ufe0f";
+        btn.title = "Edit tags";
+        btn.onclick = function() { editTagsInline(pid); };
+        return btn;
+      }
+
+      function editTagsInline(pid) {
+        var area = document.getElementById("inline-edit-area");
+        if (!area) return;
+        fetch(api("api/performers/" + pid + "/features"))
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var currentTags = (data.features && data.features.tags) || "";
+            area.style.display = "block";
+            area.innerHTML =
+              '<div style="font-size:12px; font-weight:600; margin-bottom:4px;">Edit Tags</div>' +
+              '<textarea id="inline-tags-input" style="width:100%; padding:6px; font-size:12px; border-radius:4px; border:1px solid var(--border); background:var(--surface); color:var(--text);" rows="3">' + escHtml(currentTags) + '</textarea>' +
+              '<div style="display:flex; gap:6px; margin-top:6px;">' +
+              '<button onclick="saveTagsInline(' + pid + ')" style="background:#4CAF50; color:white; border:none; border-radius:4px; padding:4px 12px; font-size:12px; cursor:pointer;">Save</button>' +
+              '<button onclick="closeInlineEdit()" style="background:none; border:1px solid var(--border); color:var(--text2); border-radius:4px; padding:4px 12px; font-size:12px; cursor:pointer;">Cancel</button>' +
+              '</div>' +
+              '<div style="font-size:11px; color:var(--text2); margin-top:4px;">Comma-separated tags (e.g. <code>amateur, big-ass, blonde</code>)</div>';
+          }).catch(function() {});
+      }
+
+      function editModelInline(pid) {
+        var area = document.getElementById("inline-edit-area");
+        if (!area) return;
+        fetch(api("api/performers/" + pid + "/model"))
+          .then(function(r) { return r.json(); })
+          .then(function(m) {
+            var currentUrl = m.profile_url || "";
+            area.style.display = "block";
+            area.innerHTML =
+              '<div style="font-size:12px; font-weight:600; margin-bottom:4px;">Set Model URL</div>' +
+              '<input type="text" id="inline-model-input" value="' + escHtml(currentUrl) + '" placeholder="https://www.analvids.com/model/..." style="width:100%; padding:6px; font-size:12px; border-radius:4px; border:1px solid var(--border); background:var(--surface); color:var(--text);" />' +
+              '<div style="display:flex; gap:6px; margin-top:6px;">' +
+              '<button onclick="saveModelInline(' + pid + ')" style="background:#2196F3; color:white; border:none; border-radius:4px; padding:4px 12px; font-size:12px; cursor:pointer;">Set Model</button>' +
+              '<button onclick="closeInlineEdit()" style="background:none; border:1px solid var(--border); color:var(--text2); border-radius:4px; padding:4px 12px; font-size:12px; cursor:pointer;">Cancel</button>' +
+              '</div>' +
+              '<div style="font-size:11px; color:var(--text2); margin-top:4px;">Paste a model URL like <code>https://www.analvids.com/model/12345/name</code></div>';
+          }).catch(function() {});
+      }
+
+      function saveTagsInline(pid) {
+        var input = document.getElementById("inline-tags-input");
+        if (!input) return;
+        var tags = input.value.trim();
+        fetch(api("api/performers/" + pid + "/features"), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tags: tags }) })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.error) { alert(d.error); return; }
+            showToast("Tags saved");
+            closeInlineEdit();
+            viewPerformerItems(pid, document.querySelector("#items-header strong").textContent);
+          }).catch(function() { alert("Failed to save tags"); });
+      }
+
+      function saveModelInline(pid) {
+        var input = document.getElementById("inline-model-input");
+        if (!input) return;
+        var url = input.value.trim();
+        if (!url) { alert("Enter a model URL"); return; }
+        fetch(api("api/performers/" + pid + "/model"), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile_url: url }) })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.error) { alert(d.error); return; }
+            showToast(d.message || "Model set");
+            closeInlineEdit();
+            viewPerformerItems(pid, document.querySelector("#items-header strong").textContent);
+          }).catch(function() { alert("Failed to set model"); });
+      }
+
+      function closeInlineEdit() {
+        var area = document.getElementById("inline-edit-area");
+        if (area) area.style.display = "none";
+      }
+      function fixPerformerImage(pid) {
+        const url = prompt("Paste an image URL for this performer:\n(external http(s) link, or /performers/static/images/ID.webp)");
+        if (url === null) return;
+        const u = url.trim();
+        if (!u) return;
+        fetch(api(`api/performers/${pid}/image`), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: u }) })
+          .then(r => r.json()).then(d => {
+            const img = document.querySelector("#items-header img");
+            if (img && d.profile_image) img.src = d.profile_image;
+            showToast("Photo updated");
+          }).catch(() => showToast("Failed to update photo"));
+      }
+      function resetPerformerImage(pid) {
+        fetch(api(`api/performers/${pid}/image`), { method: "DELETE" })
+          .then(r => r.json()).then(d => {
+            const img = document.querySelector("#items-header img");
+            if (img && d.profile_image) img.src = d.profile_image;
+            showToast("Photo reset to auto");
+          }).catch(() => showToast("Failed"));
       }
 
       const ITEMS_PAGE_SIZE = 25;
       let itemsData = [];
       let itemsShown = 0;
+      let selectedItemIds = new Set();
 
       function loadItemsList(performerId) {
         fetch(api(`api/performers/${performerId}/items?sort_by=added_date&sort_order=desc`))
           .then(r => r.json())
-          .then(data => { itemsData = data; itemsShown = 0; renderItemsPage(); })
+          .then(data => { itemsData = data; itemsShown = 0; selectedItemIds.clear(); updateBulkActions(); renderItemsPage(); })
           .catch(() => {});
       }
-
+      function toggleItemSelect(itemId, checkbox) {
+        if (checkbox.checked) selectedItemIds.add(itemId);
+        else selectedItemIds.delete(itemId);
+        updateBulkActions();
+      }
+      function updateBulkActions() {
+        const bar = document.getElementById("bulk-actions");
+        if (!bar) return;
+        const count = selectedItemIds.size;
+        bar.style.display = count ? "flex" : "none";
+        const label = document.getElementById("bulk-selected-count");
+        if (label) label.textContent = count + " selected";
+      }
+      function bulkReassignSelected() {
+        if (!selectedItemIds.size) return;
+        const target = prompt("Reassign " + selectedItemIds.size + " items to which performer?");
+        if (!target || !target.trim()) return;
+        const targetName = target.trim();
+        const ids = Array.from(selectedItemIds);
+        fetch(api("api/items/bulk/reassign"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_ids: ids, target_name: targetName }) })
+          .then(r => r.json()).then(data => { if (data.error) { alert(data.error); return; } showToast(data.message || "Reassigned"); selectedItemIds.clear(); updateBulkActions(); loadItemsList(currentPerformerId); }).catch(() => alert("Bulk reassign failed"));
+      }
+      function bulkUnassignSelected() {
+        if (!selectedItemIds.size) return;
+        if (!confirm("Unassign " + selectedItemIds.size + " items?")) return;
+        const ids = Array.from(selectedItemIds);
+        fetch(api("api/items/bulk/unassign"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item_ids: ids }) })
+          .then(r => r.json()).then(data => { if (data.error) { alert(data.error); return; } showToast(data.message || "Unassigned"); selectedItemIds.clear(); updateBulkActions(); loadItemsList(currentPerformerId); }).catch(() => alert("Bulk unassign failed"));
+      }
       function renderItemsPage() {
         const container = document.getElementById("items-list");
         const slice = itemsData.slice(itemsShown, itemsShown + ITEMS_PAGE_SIZE);
@@ -569,7 +1015,8 @@
           const thumb = item.thumbnail_url || "";
           return `
             <div style="display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:6px; background:var(--surface); border:1px solid var(--border);">
-              ${thumb ? `<img src="${thumb}" alt="" style="width:50px; height:38px; object-fit:cover; border-radius:4px; flex-shrink:0; background:var(--surface2);" loading="lazy" onerror="this.style.display='none'">` : `<div style="width:50px; height:38px; flex-shrink:0;"></div>`}
+              <input type="checkbox" ${selectedItemIds.has(item.id) ? "checked" : ""} onchange="toggleItemSelect(${item.id}, this)" style="cursor:pointer;" title="Select item">
+              ${thumb ? `<img src="${thumb}" alt="" style="width:50px; height:38px; object-fit:cover; border-radius:4px; flex-shrink:0; background:var(--surface2);" loading="lazy" onerror="this.style.display='none'">` : ""}
               <a href="${item.item_url}" target="_blank" style="flex:1; color:var(--text); text-decoration:none; font-size:13px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;" title="${titleEsc}">${title}</a>
               <div style="display:flex; gap:4px; flex-shrink:0;">
                 <button onclick="reassignItem(${item.id}, '${titleEsc}')" title="Reassign" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">→</button>
@@ -721,11 +1168,18 @@
           .catch(e => { console.error("Error:", e); alert("Error adding performer"); });
       }
       function deletePerformer(id) {
-        if (confirm("Are you sure you want to delete this performer?")) {
+        if (confirm("Block this performer? They will be skipped in future updates.")) {
           fetch(api(`api/performers/${id}`), { method: "DELETE" })
-            .then(r => { if (r.ok) { alert("Performer deleted successfully!"); loadPerformers(); } else alert("Error deleting performer"); })
-            .catch(e => { console.error("Error:", e); alert("Error deleting performer"); });
+            .then(r => r.json())
+            .then(data => { showToast(data.message || "Blocked"); loadPerformers(); })
+            .catch(() => alert("Block failed"));
         }
+      }
+      function unblockPerformer(id) {
+        if (!confirm("Unblock this performer?")) return;
+        fetch(api(`api/performers/${id}/unblock`), { method: "POST" })
+          .then(r => r.json()).then(data => { showToast(data.message || "Unblocked"); loadPerformers(); closeEditModal(); })
+          .catch(() => alert("Unblock failed"));
       }
       function sortTable(column) { sortClient(column); }
       function filterPerformers() {
@@ -822,9 +1276,97 @@
         document.getElementById("edit-performer-name").value = currentName;
         document.getElementById("reassign-target").value = "";
         document.getElementById("reassign-suggestions").style.display = "none";
-        document.getElementById("analvids-url").value = currentName;
+        document.getElementById("analvids-url").value = "";
         document.getElementById("lookup-results").style.display = "none";
+        document.getElementById("model-search").value = currentName;
+        document.getElementById("model-search-results").style.display = "none";
+        // Load current model info
+        const mInfo = document.getElementById("current-model-info");
+        const mDisplay = document.getElementById("current-model-display");
+        mInfo.textContent = "loading…";
+        mDisplay.innerHTML = "";
+        fetch(api(`api/performers/${id}/model`))
+          .then(r => r.json())
+          .then(model => {
+            if (model.error) { mInfo.textContent = "error"; return; }
+            if (model.profile_url) {
+              mInfo.textContent = "";
+              mDisplay.innerHTML = `<a href="${escHtml(model.profile_url)}" target="_blank" style="color:var(--accent);">${escHtml(model.profile_url)}</a>`;
+            } else {
+              mInfo.textContent = "none assigned";
+              mDisplay.innerHTML = `<span style="color:var(--text2);">No analvids model linked yet</span>`;
+            }
+          })
+          .catch(() => { mInfo.textContent = "error"; });
+        // Also search refdb for models matching the name
+        searchRefdbModels(currentName);
         document.getElementById("performer-edit-modal").style.display = "block";
+      }
+      function searchRefdbModels(q) {
+        const resultsDiv = document.getElementById("model-search-results");
+        if (q.length < 1) { resultsDiv.style.display = "none"; return; }
+        Promise.all([
+          fetch(api(`api/refdb/performers?q=${encodeURIComponent(q)}&per_page=15&sort_by=name&sort_order=asc`)).then(r => r.json()),
+          fetch(api(`api/performers/lookup-analvids?q=${encodeURIComponent(q)}`)).then(r => r.json())
+        ])
+          .then(([refdbResp, avResp]) => {
+            const refdb = (refdbResp.data || []).map(m => ({ source: "refdb", name: m.name, profile_url: m.profile_url || "", nationality: m.nationality || "", scenes: m.dir_scene_count || m.scene_count || null, image: null }));
+            const av = (avResp.results || []).map(m => ({ source: "analvids", name: m.name || "", profile_url: m.url || "", nationality: m.nationality || "", scenes: m.scenes || null, image: m.image || null }));
+            const seen = new Set();
+            const combined = [...refdb, ...av].filter(m => {
+              const key = m.name.toLowerCase();
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            if (!combined.length) { resultsDiv.style.display = "none"; return; }
+            resultsDiv._items = combined;
+            resultsDiv._q = q;
+            resultsDiv._idx = -1;
+            resultsDiv.innerHTML = combined.map((m, i) => {
+              const isExact = m.name.toLowerCase() === q.toLowerCase();
+              const srcLabel = m.source === "refdb" ? "refdb" : "analvids";
+              const active = i === 0 ? "background:rgba(33,150,243,0.08);" : "";
+              return `<div data-index="${i}" style="padding:8px 10px; border-bottom:1px solid var(--border); cursor:pointer; display:flex; gap:8px; align-items:center; ${isExact ? 'background:rgba(33,150,243,0.08);' : active}" onmousedown="selectRefdbModel('${escHtml(m.name)}','${escHtml(m.profile_url)}')">` +
+                `${m.image ? `<img src="${escHtml(m.image)}" style="width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid var(--border);">` : `<div style="width:36px; height:36px; border-radius:4px; border:1px dashed var(--border); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text2);">img</div>`}` +
+                `<div style="flex:1;">` +
+                  `<strong>${escHtml(m.name)}</strong>` +
+                  ` <span style="font-size:10px; color:var(--text2); background:var(--surface2); padding:1px 6px; border-radius:10px;">${escHtml(srcLabel)}</span>` +
+                  (m.nationality ? ` <span style="color:var(--text2);">${escHtml(m.nationality)}</span>` : "") +
+                  (m.scenes != null ? ` <span style="color:var(--text2);">· ${m.scenes} scenes</span>` : "") +
+                  (m.profile_url ? `<div style="font-size:10px; color:var(--text2); word-break:break-all;">${escHtml(m.profile_url)}</div>` : "") +
+                `</div>` +
+                (m.profile_url ? `<button style="background:#2196F3; color:white; border:none; border-radius:4px; padding:4px 8px; font-size:11px; cursor:pointer;" onmousedown="event.stopPropagation(); selectRefdbModel('${escHtml(m.name)}','${escHtml(m.profile_url)}')">Select</button>` : "") +
+                (m.profile_url ? `<button style="background:#4CAF50; color:white; border:none; border-radius:4px; padding:4px 8px; font-size:11px; cursor:pointer; margin-left:4px;" onmousedown="event.stopPropagation(); setPerformerModel('${escHtml(m.profile_url)}')">Set as model</button>` : "") +
+                `</div>`;
+            }).join("");
+            resultsDiv.style.display = "block";
+          })
+          .catch(() => { resultsDiv.style.display = "none"; });
+      }
+      function selectRefdbModel(name, profileUrl) {
+        document.getElementById("model-search-results").style.display = "none";
+        if (!profileUrl) { alert("This model has no profile URL"); return; }
+        document.getElementById("analvids-url").value = profileUrl;
+        fetchAnalvids();
+      }
+      function highlightModelResult(idx) {
+        const resultsDiv = document.getElementById("model-search-results");
+        if (!resultsDiv || !resultsDiv._items) return;
+        resultsDiv._idx = Math.max(-1, Math.min(idx, resultsDiv._items.length - 1));
+        resultsDiv.querySelectorAll("[data-index]").forEach((el, i) => {
+          el.style.background = i === resultsDiv._idx ? "rgba(33,150,243,0.12)" : "";
+        });
+      }
+      function activateModelResult() {
+        const resultsDiv = document.getElementById("model-search-results");
+        if (!resultsDiv || !resultsDiv._items) return;
+        const idx = resultsDiv._idx < 0 ? 0 : resultsDiv._idx;
+        const m = resultsDiv._items[idx];
+        if (!m || !m.profile_url) return;
+        document.getElementById("analvids-url").value = m.profile_url;
+        fetchAnalvids();
+        resultsDiv.style.display = "none";
       }
       function closeEditModal() { document.getElementById("performer-edit-modal").style.display = "none"; editPerformerId = null; }
       function saveEdit() {
@@ -840,6 +1382,21 @@
         const id = editPerformerId; closeEditModal();
         fetch(api(`api/performers/${id}/reassign`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_name: targetName, delete_source: true }) })
           .then(r => r.json()).then(data => { if (data.error) { alert("Error: " + data.error); return; } showToast(data.message || "Reassigned!"); loadPerformers(); }).catch(() => alert("Reassign failed"));
+      }
+      function saveReassignKeep() {
+        const targetName = document.getElementById("reassign-target").value.trim();
+        if (!targetName) { alert("Enter a target performer name to reassign items to."); return; }
+        const id = editPerformerId; closeEditModal();
+        fetch(api(`api/performers/${id}/reassign`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_name: targetName, delete_source: false }) })
+          .then(r => r.json()).then(data => { if (data.error) { alert("Error: " + data.error); return; } showToast(data.message || "Merged (kept source)"); loadPerformers(); }).catch(() => alert("Merge failed"));
+      }
+      function unassignAllItems() {
+        const id = editPerformerId;
+        if (!id) return;
+        if (!confirm("Unassign ALL items from this performer? They will become unassigned.")) return;
+        closeEditModal();
+        fetch(api(`api/performers/${id}/unassign-all`), { method: "POST" })
+          .then(r => r.json()).then(data => { if (data.error) { alert("Error: " + data.error); return; } showToast(data.message || "Unassigned"); loadPerformers(); }).catch(() => alert("Unassign failed"));
       }
       let reassignSearchTimer = null;
       function searchReassignTarget(q) {
@@ -877,12 +1434,42 @@
                 <div style="flex:1;">
                   <div style="margin-bottom:6px;"><strong>${data.name}</strong> ${data.nationality ? `<span style="color:var(--text2);">${data.nationality.toUpperCase()}</span>` : ""} ${data.scenes ? `<span style="color:var(--text2);">· ${data.scenes} scenes</span>` : ""}</div>
                   <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <button class="btn" onclick="setPerformerModel('${data.url}')" style="background:#4CAF50; color:white; font-size:12px; padding:6px 12px;">📎 Set as model</button>
                     <button class="btn" onclick="mergeFromAnalvids('${data.name.replace(/'/g, "\\'")}', '${data.url}')" style="background:#ff9800; color:white; font-size:12px; padding:6px 12px;">🔀 Merge into ${data.name}</button>
                     <a href="${data.url}" target="_blank" style="font-size:12px; color:var(--accent);">View on analvids ↗</a>
                   </div>
                 </div>
               </div>`;
           }).catch(() => { btn.textContent = "🔍 Fetch"; btn.disabled = false; results.innerHTML = `<span style="color:var(--red);">Failed — try again</span>`; });
+      }
+      function setPerformerModel(profileUrl) {
+        const id = editPerformerId;
+        if (!id) return;
+        fetch(api(`api/performers/${id}/model`), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile_url: profileUrl }) })
+          .then(r => r.json()).then(d => {
+            if (d.error) { alert("Error: " + d.error); return; }
+            showToast("Model updated! " + (d.profile ? d.profile.name : ""));
+            document.getElementById("lookup-results").style.display = "none";
+            // Refresh current model display
+            fetch(api(`api/performers/${id}/model`)).then(r => r.json()).then(model => {
+              const mDisplay = document.getElementById("current-model-display");
+              const mInfo = document.getElementById("current-model-info");
+              if (model.profile_url) {
+                mInfo.textContent = "";
+                mDisplay.innerHTML = `<a href="${escHtml(model.profile_url)}" target="_blank" style="color:var(--accent);">${escHtml(model.profile_url)}</a>`;
+              }
+            }).catch(() => {});
+          }).catch(() => alert("Failed to set model"));
+      }
+      function clearPerformerModel(performerId) {
+        if (!confirm("Clear the linked model for this performer?")) return;
+        fetch(api(`api/performers/${performerId}/model`), { method: "DELETE" })
+          .then(r => r.json()).then(d => {
+            if (d.error) { alert("Error: " + d.error); return; }
+            showToast(d.message || "Model cleared");
+            const modelLine = document.getElementById("model-line");
+            if (modelLine) modelLine.innerHTML = `<span style="color:var(--text2);">📎 Model: none</span>`;
+          }).catch(() => alert("Failed to clear model"));
       }
       function mergeFromAnalvids(targetName, targetUrl) {
         const currentName = document.getElementById("edit-performer-name").value.trim();
