@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Performers Database Viewer</title>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script>
       // Base path for API/static calls — works behind a reverse-proxy prefix.
       const BASE = window.location.pathname.replace(/\/+$/, "");
@@ -12,7 +13,7 @@
   </head>
   <body>
     <div class="container">
-      <div style="display:flex; justify-content:space-between; align-items:baseline;">
+      <div class="header-bar"
         <div>
           <h1>Performers</h1>
           <p class="subtitle">Reference database — validated performers from analvids</p>
@@ -20,11 +21,12 @@
       </div>
 
       <div class="nav-bar">
-        <a href="#" onclick="showPerformers(); return false;">📋 Performers</a>
-        <a href="#" onclick="showRefDB(); return false;">📖 RefDB</a>
-        <a href="#" onclick="showUnassigned(); return false;">⊘ Unassigned</a>
-        <a href="#" onclick="showStats(); return false;">📊 Statistics</a>
-        <a href="#" onclick="showSettings(); return false;" style="margin-left:auto;" title="Settings">⚙</a>
+        <a href="#" onclick="showPerformers(); return false;"><i data-lucide="list" class="icon"></i> Performers</a>
+        <a href="#" onclick="showRefDB(); return false;"><i data-lucide="book-open" class="icon"></i> RefDB</a>
+        <a href="#" onclick="showUnassigned(); return false;"><i data-lucide="circle-x" class="icon"></i> Unassigned</a>
+        <a href="#" onclick="showStats(); return false;"><i data-lucide="bar-chart-3" class="icon"></i> Statistics</a>
+        <a href="#" onclick="showDAP(); return false;"><i data-lucide="activity" class="icon"></i> DAP Explorer</a>
+        <a href="#" onclick="showSettings(); return false;" class="ml-auto" title="Settings"><i data-lucide="settings" class="icon"></i></a>
       </div>
 
       <!-- KPI bar -->
@@ -53,7 +55,7 @@
 
       <!-- Add performer -->
       <div class="add-form">
-        <span style="color:var(--text2); font-size:13px;">➕ Add</span>
+        <span class="add-label"><i data-lucide="plus" class="icon"></i> Add</span>
         <input type="text" id="new-name" placeholder="Performer name" />
         <input type="text" id="new-rating" placeholder="tags, comma-separated (beau, raw, +, …)" maxlength="80" title="Tags (comma-separated) — beau: beautiful · raw · +: good · ++: extraordinary · -: not good · --: awful · fng: fake &amp; gay (avoid) · dedup: already here as AKA · ?: dont know · !: attention, look into it · !!: priority, look into it" />
         <small class="hint">tags comma-separated · beau beautiful · raw · + good · ++ extraordinary · - not good · -- awful · fng fake&amp;gay (avoid) · dedup already an AKA · ? dont know · ! attention (look into it) · !! priority (look into it)</small>
@@ -78,30 +80,30 @@
             <option value="asc">Ascending</option>
             <option value="desc">Descending</option>
           </select>
-          <label style="margin-left:15px; font-size:13px;">
+          <label class="filter-label">
             <input type="checkbox" id="show-aliases" onchange="loadPerformers()">
             Show AKA aliases
           </label>
-          <label style="margin-left:15px; font-size:13px;">
+          <label class="filter-label">
             <input type="checkbox" id="has-preview" onchange="loadPerformers()">
-            📷 Has preview
+            <i data-lucide="camera" class="icon"></i> Has preview
           </label>
-          <label style="margin-left:15px; font-size:13px;">
+          <label class="filter-label">
             <input type="checkbox" id="hide-ghosts" onchange="loadPerformers()" checked>
-            🧹 Hide empty (refdb-only)
+            <i data-lucide="filter-x" class="icon"></i> Hide empty (refdb-only)
           </label>
-          <label style="margin-left:15px; font-size:13px;">
+          <label class="filter-label">
             <input type="checkbox" id="dap-only" onchange="loadPerformers()" checked>
-            🎯 DAP only
+            <i data-lucide="target" class="icon"></i> DAP only
           </label>
-          <span id="active-tag" style="margin-left:15px; font-size:13px; display:none; align-items:center; gap:4px; padding:2px 8px; border-radius:12px; border:1px solid var(--accent, #3b82f6); color:var(--text);"></span>
-          <label style="margin-left:15px; font-size:13px;">
+          <span id="active-tag" class="active-tag"></span>
+          <label class="filter-label">
             <input type="checkbox" id="hide-novideos" onchange="renderFiltered()" checked>
             Hide no videos
           </label>
-          <label style="margin-left:15px; font-size:13px;">
+          <label class="filter-label">
             <input type="checkbox" id="hide-blocked" onchange="loadPerformers()" checked>
-            🚫 Hide blocked
+            <i data-lucide="ban" class="icon"></i> Hide blocked
           </label>
         </div>
         <div>
@@ -119,13 +121,13 @@
         <thead>
           <tr>
             <th onclick="sortTable('name')">Name</th>
-            <th style="width:150px; max-width:150px;">AKA</th>
+            <th class="th-aka">AKA</th>
             <th>Ref</th>
             <th>Nat</th>
-            <th style="width:42px; max-width:42px; text-align:center;" onclick="sortTable('age')" title="Age">Age</th>
-            <th style="width:52px; max-width:52px; text-align:center;" onclick="sortTable('crawls')" title="Crawls">Cr</th>
-            <th style="width:64px; max-width:64px; text-align:center; font-size:11px;" onclick="sortTable('first_seen')" title="First seen">1st</th>
-            <th style="width:64px; max-width:64px; text-align:center; font-size:11px;" onclick="sortTable('last_seen')" title="Last seen">Last</th>
+            <th class="th-slim" onclick="sortTable('age')" title="Age">Age</th>
+            <th class="th-slim" onclick="sortTable('crawls')" title="Crawls">Cr</th>
+            <th class="th-slim-wider" onclick="sortTable('first_seen')" title="First seen">1st</th>
+            <th class="th-slim-wider" onclick="sortTable('last_seen')" title="Last seen">Last</th>
             <th onclick="sortTable('rating')">Rating</th>
             <th>Actions</th>
           </tr>
@@ -134,119 +136,118 @@
       </table>
 
       <!-- Performer detail: items + features + dates -->
-      <div id="performer-items-section" style="display: none; margin-top: 20px">
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
-          <button class="back-btn" onclick="goBackToPerformers()" style="font-size:13px; padding:4px 10px;">← Back</button>
-          <h2 id="items-header" style="margin:0; font-size:18px; font-weight:600; display:flex; align-items:center; gap:12px;"></h2>
+      <div id="performer-items-section" class="section">
+        <div class="section-header">
+          <button class="back-btn" onclick="goBackToPerformers()"><i data-lucide="arrow-left" class="icon"></i> Back</button>
+          <h2 id="items-header" class="section-title"></h2>
         </div>
 
-        <div id="features-panel" style="display:none;">
-          <div id="performer-meta" style="font-size:13px;"></div>
+        <div id="features-panel" class="panel">
+          <div id="performer-meta" class="meta-text"></div>
         </div>
 
-        <div id="bulk-actions" style="display:none; align-items:center; gap:8px; padding:6px 10px; background:var(--surface2); border-radius:6px; margin-bottom:6px;">
-          <span id="bulk-selected-count" style="font-size:13px; color:var(--text2);"></span>
-          <button onclick="bulkReassignSelected()" style="background:#2196F3; color:white; border:none; border-radius:4px; padding:4px 10px; font-size:12px; cursor:pointer;">→ Reassign selected</button>
-          <button onclick="bulkUnassignSelected()" style="background:#f44336; color:white; border:none; border-radius:4px; padding:4px 10px; font-size:12px; cursor:pointer;">⊘ Unassign selected</button>
-          <button onclick="selectedItemIds.clear(); updateBulkActions(); document.querySelectorAll('#items-list input[type=checkbox]').forEach(c=>c.checked=false)" style="background:none; border:1px solid var(--border); color:var(--text2); border-radius:4px; padding:4px 10px; font-size:12px; cursor:pointer;">Cancel</button>
+        <div id="bulk-actions" class="panel bulk-actions">
+          <span id="bulk-selected-count" class="bulk-count"></span>
+          <button onclick="bulkReassignSelected()" class="btn btn-primary"><i data-lucide="arrow-right" class="icon"></i> Reassign selected</button>
+          <button onclick="bulkUnassignSelected()" class="btn btn-danger"><i data-lucide="circle-x" class="icon"></i> Unassign selected</button>
+          <button onclick="selectedItemIds.clear(); updateBulkActions(); document.querySelectorAll('#items-list input[type=checkbox]').forEach(c=>c.checked=false)" class="btn-ghost">Cancel</button>
         </div>
-        <div id="items-list" style="display:flex; flex-direction:column; gap:4px;"></div>
-        <button id="items-more-btn" onclick="renderItemsPage()" style="display:none; margin-top:8px; background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:6px; cursor:pointer; font-size:13px; width:100%;"></button>
+        <div id="items-list" class="items-list"></div>
+        <button id="items-more-btn" onclick="renderItemsPage()" class="btn btn-full hidden"></button>
       </div>
 
       <!-- Edit / Merge modal -->
-      <div id="performer-edit-modal" style="display:none;">
+      <div id="performer-edit-modal" class="section">
         <div class="modal">
-          <div class="modal-content" style="max-width: 560px;">
-            <span class="close" onclick="closeEditModal()">&times;</span>
+          <div class="modal-content modal-sm">
+            <span class="close" onclick="closeEditModal()"><i data-lucide="x" class="icon icon-lg"></i></span>
             <h3>Edit / Merge</h3>
-            <div style="margin: 12px 0;">
-              <label style="font-size:13px; color:var(--text2);">Name</label>
-              <input type="text" id="edit-performer-name" style="width:100%; padding:8px; margin-top:2px;" />
+            <div class="form-group">
+              <label class="form-label">Name</label>
+              <input type="text" id="edit-performer-name" class="input" />
             </div>
-            <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
-            <div style="margin: 12px 0;">
-              <label style="font-size:13px;"><strong>🧑 Current Model</strong> <span id="current-model-info" style="color:var(--text2); font-weight:normal;">loading…</span></label>
-              <div id="current-model-display" style="margin-top:4px; padding:6px 8px; background:var(--surface2); border-radius:6px; font-size:12px;"></div>
+            <hr class="hr" />
+            <div class="form-group">
+              <label class="form-label"><strong><i data-lucide="user" class="icon"></i> Current Model</strong> <span id="current-model-info" class="text2">loading…</span></label>
+              <div id="current-model-display" class="panel"></div>
             </div>
-            <div style="margin: 12px 0;">
-              <label style="font-size:13px;"><strong>🔍 Search Models</strong> <span style="color:var(--text2); font-weight:normal;">by name from analvids</span></label>
-              <div style="display:flex; gap:6px; margin-top:2px;">
-                <input type="text" id="model-search" placeholder="Search models…" autocomplete="off"
-                  style="flex:1; padding:8px;"
+            <div class="form-group">
+              <label class="form-label"><strong><i data-lucide="search" class="icon"></i> Search Models</strong> <span class="text2">by name from analvids</span></label>
+              <div class="flex gap-6 mt-4">
+                <input type="text" id="model-search" placeholder="Search models…" autocomplete="off" class="input flex-1"
                   oninput="searchRefdbModels(this.value)"
                   onkeydown="if(['ArrowDown','ArrowUp','Enter'].includes(event.key)){event.preventDefault(); if(event.key==='ArrowDown') highlightModelResult((document.getElementById('model-search-results')._idx||-1)+1); else if(event.key==='ArrowUp') highlightModelResult((document.getElementById('model-search-results')._idx||-1)-1); else activateModelResult();}"
                   onblur="setTimeout(() => document.getElementById('model-search-results').style.display='none', 300)"
                   onfocus="if(this.value) searchRefdbModels(this.value)" />
-                <div id="model-search-results" style="display:none; position:absolute; z-index:10; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:260px; overflow-y:auto; border-radius:6px; margin-top:2px;"></div>
+                <div id="model-search-results" class="suggestions-dropdown"></div>
               </div>
             </div>
-            <div style="margin: 12px 0;">
-              <label style="font-size:13px;"><strong>Or paste analvids URL</strong></label>
-              <div style="display:flex; gap:6px; margin-top:2px;">
-                <input type="text" id="analvids-url" placeholder="https://www.analvids.com/model/…" style="flex:1; padding:8px;" onpaste="if(this.value.trim()) fetchAnalvids()" />
-                <button class="btn" onclick="fetchAnalvids()" id="fetch-analvids-btn" style="background:#2196F3; color:white; white-space:nowrap;">🔍 Fetch</button>
+            <div class="form-group">
+              <label class="form-label"><strong>Or paste analvids URL</strong></label>
+              <div class="flex gap-6 mt-4">
+                <input type="text" id="analvids-url" placeholder="https://www.analvids.com/model/…" class="input flex-1" onpaste="if(this.value.trim()) fetchAnalvids()" />
+                <button class="btn btn-primary" onclick="fetchAnalvids()" id="fetch-analvids-btn"><i data-lucide="search" class="icon"></i> Fetch</button>
               </div>
-              <small style="color:var(--text2); font-size:11px;">Paste a model URL like <code>https://www.analvids.com/model/12345/name</code> and it auto-fetches.</small>
-              <div id="lookup-results" style="display:none; margin-top:8px; padding:10px; background:var(--surface2); border-radius:6px; font-size:13px;"></div>
+              <small class="form-hint">Paste a model URL like <code>https://www.analvids.com/model/12345/name</code> and it auto-fetches.</small>
+              <div id="lookup-results" class="lookup-results"></div>
             </div>
-            <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
-            <div style="margin: 12px 0;">
-              <label style="font-size:13px;"><strong>Merge into existing</strong></label>
-              <div style="position:relative;">
+            <hr class="hr" />
+            <div class="form-group">
+              <label class="text-sm"><strong>Merge into existing</strong></label>
+              <div class="relative">
                 <input type="text" id="reassign-target" placeholder="Search existing performers…" autocomplete="off"
-                  style="width:100%; padding:8px; margin-top:2px;"
+                  class="input"
                   oninput="searchReassignTarget(this.value)"
                   onblur="setTimeout(() => document.getElementById('reassign-suggestions').style.display='none', 200)"
                   onfocus="if(this.value) searchReassignTarget(this.value)" />
-                <div id="reassign-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:200px; overflow-y:auto; z-index:10;"></div>
+                <div id="reassign-suggestions" class="suggestions-dropdown"></div>
               </div>
-              <div style="display:flex; gap:8px; margin-top:8px;">
-                <button class="btn" onclick="saveReassign()" style="background:#ff9800; color:white; font-size:13px;">🔀 Merge &amp; Delete</button>
-                <button class="btn" onclick="saveReassignKeep()" style="background:#ff9800; color:white; font-size:13px; opacity:0.85;">🔀 Merge &amp; Keep</button>
+              <div class="flex gap-8 mt-8">
+                <button class="btn" onclick="saveReassign()" class="btn btn-warning"><i data-lucide="git-merge" class="icon"></i> Merge &amp; Delete</button>
+                <button class="btn" onclick="saveReassignKeep()" class="btn btn-warning" style="opacity:0.85;"><i data-lucide="git-merge" class="icon"></i> Merge &amp; Keep</button>
               </div>
-              <small style="color:var(--text2); font-size:11px;">Merge moves all items to the target performer. “Delete” removes this performer afterward; “Keep” leaves it as a ghost.</small>
+              <small class="text2 text-xs">Merge moves all items to the target performer. “Delete” removes this performer afterward; “Keep” leaves it as a ghost.</small>
             </div>
-            <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
-            <div style="margin: 12px 0;">
-              <label style="font-size:13px;"><strong>Unassign</strong></label>
-              <div style="display:flex; gap:8px; margin-top:6px;">
-                <button class="btn" onclick="unassignAllItems()" style="background:#f44336; color:white; font-size:13px;">⊘ Unassign all items</button>
+            <hr class="hr" />
+            <div class="form-group">
+              <label class="text-sm"><strong>Unassign</strong></label>
+              <div class="flex gap-8 mt-6">
+                <button class="btn" onclick="unassignAllItems()" class="btn btn-danger"><i data-lucide="circle-x" class="icon"></i> Unassign all items</button>
               </div>
-              <small style="color:var(--text2); font-size:11px;">Removes this performer from all items. Items become unassigned.</small>
+              <small class="text2 text-xs">Removes this performer from all items. Items become unassigned.</small>
             </div>
-            <hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">
-            <div style="display:flex; gap:8px; justify-content:flex-end;">
-              <button class="btn" onclick="closeEditModal()" style="font-size:13px;">Cancel</button>
-              <button class="btn" onclick="saveEdit()" style="background:#4CAF50; color:white; font-size:13px;">💾 Save</button>
+            <hr class="hr">
+            <div class="flex gap-8 justify-end">
+              <button class="btn" onclick="closeEditModal()" class="text-sm">Cancel</button>
+              <button class="btn" onclick="saveEdit()" class="btn btn-success"><i data-lucide="save" class="icon"></i> Save</button>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Settings modal (non-performer tags) -->
-      <div id="settings-modal" style="display:none;">
-        <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;" onclick="closeSettings()"></div>
-        <div style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px; z-index:1000; width:600px; max-width:90vw; max-height:80vh; overflow:auto;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h2 style="margin:0; font-size:18px;">⚙️ Non-Performer Tags</h2>
-            <button onclick="closeSettings()" style="background:none; border:none; color:var(--text2); font-size:22px; cursor:pointer;">✕</button>
+      <div id="settings-modal" class="hidden">
+        <div class="modal-shell" onclick="closeSettings()"></div>
+        <div class="modal-card">
+          <div class="header-bar">
+            <h2 class="section-title"><i data-lucide="settings" class="icon"></i> Non-Performer Tags</h2>
+            <button onclick="closeSettings()" class="modal-close"><i data-lucide="x" class="icon" class="icon icon-lg"></i></button>
           </div>
-          <p style="color:var(--text2); font-size:13px; margin-bottom:16px;">
+          <p class="text2" class="mb-16">
             These data-subkey values from sxyprn are blocked from being treated as performer names.
             Fuzzy matching is used, so slight variations are caught automatically.
           </p>
-          <div style="display:flex; gap:8px; margin-bottom:16px;">
-            <input type="text" id="new-tag-input" placeholder="Tag name (e.g. Chilean)" style="flex:1; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:6px; font-size:13px; outline:none;">
-            <input type="text" id="new-tag-reason" placeholder="Reason" style="flex:1; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:7px 12px; border-radius:6px; font-size:13px; outline:none;">
+          <div class="flex gap-8 mb-16">
+            <input type="text" id="new-tag-input" placeholder="Tag name (e.g. Chilean)" class="input flex-1"line:none;">
+            <input type="text" id="new-tag-reason" placeholder="Reason" class="input flex-1"line:none;">
             <button class="btn btn-primary" onclick="addNonPerformerTag()">Add</button>
           </div>
-          <table style="width:100%; font-size:13px;">
+          <table class="input">
             <thead>
               <tr>
-                <th style="padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Tag</th>
-                <th style="padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Reason</th>
-                <th style="padding:8px 10px; text-align:right; border-bottom:1px solid var(--border); color:var(--text2); font-size:12px; text-transform:uppercase;">Actions</th>
+                <th class="th">Tag</th>
+                <th class="th">Reason</th>
+                <th class="th text-right">Actions</th>
               </tr>
             </thead>
             <tbody id="non-performer-tags-body"></tbody>
@@ -255,55 +256,55 @@
       </div>
 
       <!-- Reassign Item modal -->
-      <div id="reassign-modal" style="display:none;">
-        <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;" onclick="closeReassignModal()"></div>
-        <div style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; z-index:1000; width:450px; max-width:90vw;">
-          <h3 style="margin:0 0 12px 0;">Reassign Item</h3>
-          <div style="font-size:13px; color:var(--text2); margin-bottom:12px; padding:8px; background:var(--surface2); border-radius:6px;">
+      <div id="reassign-modal" class="hidden">
+        <div class="modal-shell" onclick="closeReassignModal()"></div>
+        <div class="modal-card">
+          <h3 class="mb-12">Reassign Item</h3>
+          <div class="text2 mb-12 p-8 rounded bg-surface2">
             <span id="reassign-item-title"></span>
           </div>
-          <label style="font-size:13px; display:block; margin-bottom:4px;"><strong>Move to performer:</strong></label>
-          <div style="position:relative;">
+          <label class="form-label block mb-4"><strong>Move to performer:</strong></label>
+          <div class="relative">
             <input type="text" id="reassign-modal-target" placeholder="Type performer name..." autocomplete="off"
-              style="width:100%; padding:8px; box-sizing:border-box;"
+              class="input"
               oninput="searchReassignModalTarget(this.value)"
               onblur="setTimeout(() => document.getElementById('reassign-modal-suggestions').style.display='none', 200)"
               onfocus="if(this.value) searchReassignModalTarget(this.value)" />
-            <div id="reassign-modal-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1px solid var(--border); max-height:200px; overflow-y:auto; z-index:10;"></div>
+            <div id="reassign-modal-suggestions" class="suggestions-dropdown"></div>
           </div>
-          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
-            <button class="btn" onclick="closeReassignModal()" style="font-size:13px;">Cancel</button>
-            <button class="btn" onclick="executeReassign()" style="background:var(--accent); color:white; font-size:13px;">→ Reassign</button>
+          <div class="flex gap-8 justify-end mt-16">
+            <button class="btn" onclick="closeReassignModal()" class="text-sm">Cancel</button>
+            <button class="btn" onclick="executeReassign()" class="btn btn-primary"><i data-lucide="arrow-right" class="icon"></i> Reassign</button>
           </div>
         </div>
       </div>
 
       <!-- Reference Database section -->
-      <div id="refdb-section" style="display:none; margin-top: 10px;">
-        <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-          <button class="back-btn" onclick="showPerformers()">← Back</button>
-          <h2 style="margin:0; font-size:18px; font-weight:600;">📖 Reference Database</h2>
-          <span style="color:var(--text2); font-size:13px;" id="refdb-total"></span>
-          <button class="btn" id="refdb-refresh-btn" onclick="refreshRefDB()" style="margin-left:auto; font-size:12px; padding:6px 10px;" title="Recompute refdb match status">🔄 refdb</button>
+      <div id="refdb-section" class="hidden mt-10">
+        <div class="section-header">
+          <button class="back-btn" onclick="showPerformers()"><i data-lucide="arrow-left" class="icon"></i> Back</button>
+          <h2 class="section-title"><i data-lucide="book-open" class="icon"></i> Reference Database</h2>
+          <span class="text2" id="refdb-total"></span>
+          <button class="btn btn-ghost" id="refdb-refresh-btn" onclick="refreshRefDB()" title="Recompute refdb match status"><i data-lucide="refresh-cw" class="icon"></i> refdb</button>
         </div>
 
-        <div class="controls" style="flex-wrap:wrap;">
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            <input type="text" id="refdb-search" placeholder="Search name..." onkeyup="debounceRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:150px;">
-            <select id="refdb-nat" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
+        <div class="controls" class="flex-wrap">
+          <div class="flex gap-8 flex-wrap items-center">
+            <input type="text" id="refdb-search" placeholder="Search name..." onkeyup="debounceRefDB()" class="input" style="width:150px;">
+            <select id="refdb-nat" onchange="loadRefDB()" class="input">
               <option value="">All nationalities</option>
             </select>
-            <input type="number" id="refdb-age-min" placeholder="Min age" onkeyup="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:70px;">
-            <input type="number" id="refdb-age-max" placeholder="Max age" onkeyup="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:70px;">
-            <input type="text" id="refdb-tag" placeholder="Filter by tag..." onkeyup="debounceRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; width:140px;">
-            <select id="refdb-sort" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
+            <input type="number" id="refdb-age-min" placeholder="Min age" onkeyup="loadRefDB()" class="input" style="width:70px;">
+            <input type="number" id="refdb-age-max" placeholder="Max age" onkeyup="loadRefDB()" class="input" style="width:70px;">
+            <input type="text" id="refdb-tag" placeholder="Filter by tag..." onkeyup="debounceRefDB()" class="input" style="width:140px;">
+            <select id="refdb-sort" onchange="loadRefDB()" class="input">
               <option value="name">Name</option>
               <option value="nationality">Nationality</option>
               <option value="age">Age</option>
               <option value="scene_count">Scenes</option>
               <option value="years_active">Years Active</option>
             </select>
-            <select id="refdb-order" onchange="loadRefDB()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
+            <select id="refdb-order" onchange="loadRefDB()" class="input">
               <option value="asc">Asc</option>
               <option value="desc">Desc</option>
             </select>
@@ -324,25 +325,25 @@
           </thead>
           <tbody id="refdb-body"></tbody>
         </table>
-        <div style="margin-top:16px; display:flex; justify-content:center; gap:8px;" id="refdb-pagination"></div>
+        <div class="flex justify-center gap-8 mt-16" id="refdb-pagination"></div>
       </div>
 
       <!-- Unassigned Items section -->
-      <div id="unassigned-section" style="display:none; margin-top: 10px;">
-        <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-          <button class="back-btn" onclick="showPerformers()">← Back</button>
-          <h2 style="margin:0; font-size:18px; font-weight:600;">⊘ Unassigned Items</h2>
-          <span style="color:var(--text2); font-size:13px;" id="unassigned-total"></span>
+      <div id="unassigned-section" class="hidden mt-10">
+        <div class="section-header">
+          <button class="back-btn" onclick="showPerformers()"><i data-lucide="arrow-left" class="icon"></i> Back</button>
+          <h2 class="section-title"><i data-lucide="circle-x" class="icon"></i> Unassigned Items</h2>
+          <span class="text2" id="unassigned-total"></span>
         </div>
-        <div style="overflow-x:auto;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <div class="overflow-x-auto">
+          <table class="table">
             <thead>
               <tr>
-                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">ID</th>
-                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">URL</th>
-                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">Title</th>
-                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);">Date</th>
-                <th style="text-align:left; padding:8px; border-bottom:2px solid var(--border);"></th>
+                <th class="th">ID</th>
+                <th class="th">URL</th>
+                <th class="th">Title</th>
+                <th class="th">Date</th>
+                <th class="th"></th>
               </tr>
             </thead>
             <tbody id="unassigned-body"></tbody>
@@ -350,14 +351,90 @@
         </div>
       </div>
 
-      <!-- Statistics section -->
-      <div id="stats-section" style="display:none; margin-top: 10px;">
-        <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-          <button class="back-btn" onclick="showPerformers()">← Back</button>
-          <h2 style="margin:0; font-size:18px; font-weight:600;">📊 Statistics</h2>
+      <!-- DAP Explorer section -->
+      <div id="dap-section" class="hidden mt-10">
+        <div class="section-header">
+          <button class="back-btn" onclick="showPerformers()"><i data-lucide="arrow-left" class="icon"></i> Back</button>
+          <h2 class="section-title"><i data-lucide="activity" class="icon"></i> DAP Explorer</h2>
         </div>
-        <div id="stats-content"></div>
+
+        <!-- Filter controls -->
+        <div class="controls" style="margin-bottom: 16px;">
+          <div class="flex gap-8 flex-wrap items-center">
+            <select id="dap-view" onchange="loadDAP()" class="input">
+              <option value="freshest">Freshest DAP Performers</option>
+              <option value="latest">Latest DAP Activity</option>
+              <option value="performances">DAP Performances</option>
+            </select>
+            <select id="dap-tag" onchange="loadDAP()" class="input" style="width:180px;">
+              <option value="">All DAP tags</option>
+            </select>
+            <input type="number" id="dap-days" placeholder="Last N days" onkeyup="debounceDAP()" class="input" style="width:120px;">
+            <input type="number" id="dap-limit" placeholder="Limit" value="50" onkeyup="debounceDAP()" class="input" style="width:80px;">
+          </div>
+        </div>
+
+        <!-- Freshest DAP Performers -->
+        <div id="dap-freshest" style="display: none;">
+          <h3 style="margin: 16px 0 8px; font-size: 14px; color: var(--text2);">Freshest DAP Performers</h3>
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th class="th">Performer</th>
+                  <th class="th">First Seen</th>
+                  <th class="th">Last Seen</th>
+                  <th class="th">Crawls</th>
+                  <th class="th">Items</th>
+                  <th class="th">DAP Tags</th>
+                </tr>
+              </thead>
+              <tbody id="dap-freshest-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Latest DAP Activity -->
+        <div id="dap-latest" style="display: none;">
+          <h3 style="margin: 16px 0 8px; font-size: 14px; color: var(--text2);">Latest DAP Activity</h3>
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th class="th">Performer</th>
+                  <th class="th">First Seen</th>
+                  <th class="th">Last Seen</th>
+                  <th class="th">Crawls</th>
+                  <th class="th">Items</th>
+                  <th class="th">DAP Tags</th>
+                </tr>
+              </thead>
+              <tbody id="dap-latest-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- DAP Performances -->
+        <div id="dap-performances" style="display: none;">
+          <h3 style="margin: 16px 0 8px; font-size: 14px; color: var(--text2);">DAP Performances</h3>
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th class="th">Title</th>
+                  <th class="th">Performer</th>
+                  <th class="th">Date</th>
+                  <th class="th">Added</th>
+                  <th class="th">DAP Tags</th>
+                </tr>
+              </thead>
+              <tbody id="dap-performances-body"></tbody>
+            </table>
+          </div>
+          <div class="flex justify-center gap-8 mt-16" id="dap-perf-pagination"></div>
+        </div>
       </div>
+
     </div>
 
     <script>
@@ -392,7 +469,7 @@
         if (!el) return;
         if (currentTagFilter) {
           el.style.display = "inline-flex";
-          el.innerHTML = `🔖 ${currentTagFilter} <span style="cursor:pointer; margin-left:6px; color:var(--accent, #3b82f6); font-weight:700;" onclick="toggleTagFilter(currentTagFilter)">✕</span>`;
+          el.innerHTML = `🔖 ${currentTagFilter} <span style="cursor:pointer; margin-left:6px; color:var(--accent, #3b82f6); font-weight:700;" onclick="toggleTagFilter(currentTagFilter)"><i data-lucide="x" class="icon"></i></span>`;
         } else {
           el.style.display = "none";
         }
@@ -537,7 +614,9 @@
 
       document.addEventListener("DOMContentLoaded", function () {
         showPerformers();
+        if (window.lucide) lucide.createIcons();
         attachTagAutocomplete(document.getElementById("new-rating"));
+        loadDAPTags();
         if (/\/stats$/.test(window.location.pathname)) showStats();
         const hashMatch = location.hash.match(/^#performer-(\d+)$/);
         if (hashMatch) {
@@ -566,7 +645,7 @@
       }
 
       function hideSections() {
-        ["performers-table", "performer-items-section", "refdb-section", "unassigned-section", "stats-section"]
+        ["performers-table", "performer-items-section", "refdb-section", "unassigned-section", "stats-section", "dap-section"]
           .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; });
       }
       function setBrowseChrome(show) {
@@ -651,9 +730,9 @@
           const n = performer.name.replace(/'/g, "\\'");
           let refdbBadge = "";
           if (performer.refdb_match === "fuzzy") {
-            refdbBadge = `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(251,191,36,0.12);color:#fbbf24;font-size:16px;font-weight:bold;cursor:help;" title="Uncertain — similar name found in refdb">⚠</span>`;
+            refdbBadge = `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(251,191,36,0.12);color:#fbbf24;cursor:help;" title="Uncertain — similar name found in refdb"><i data-lucide="alert-triangle" class="icon"></i></span>`;
           } else if (performer.refdb_match === "unmatched" && !performer.validated) {
-            refdbBadge = `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(248,113,113,0.10);color:var(--red);font-size:18px;cursor:pointer;line-height:1;" title="Needs fix — click to edit/reassign" onclick="confirmPerformer(${performer.id}, '${n}')">✕</span>`;
+            refdbBadge = `<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(248,113,113,0.10);color:var(--red);cursor:pointer;line-height:1;" title="Needs fix — click to edit/reassign" onclick="confirmPerformer(${performer.id}, '${n}')"><i data-lucide="x" class="icon"></i></span>`;
           }
           const nat = performer.nationality || "";
           const age = performer.age != null ? performer.age : "";
@@ -665,35 +744,35 @@
           if (hasDap) contentBadges += `<span style="display:inline-block;padding:0 4px;border-radius:3px;font-size:9px;font-weight:bold;background:rgba(233,30,99,0.15);color:#e91e63;margin:0 1px;line-height:16px;">DAP</span>`;
           if (hasAnal) contentBadges += `<span style="display:inline-block;padding:0 4px;border-radius:3px;font-size:9px;font-weight:bold;background:rgba(124,58,237,0.15);color:#7c3aed;margin:0 1px;line-height:16px;">AN</span>`;
           const cam = performer.has_preview
-            ? `<span title="Has photo preview" style="margin-right:5px;">📷</span>`
-            : `<span title="No photo" style="margin-right:5px; opacity:.2;">📷</span>`;
+            ? `<span title="Has photo preview" style="margin-right:5px; display:inline-flex;"><i data-lucide="camera" class="icon"></i></span>`
+            : `<span title="No photo" style="margin-right:5px; opacity:.2; display:inline-flex;"><i data-lucide="camera" class="icon"></i></span>`;
           const nameHtml = `${cam}<a href="${BASE}/#performer-${performer.id}" target="_blank">${performer.name}</a>` +
             (performer.refdb_match === "unmatched" || performer.refdb_match === "fuzzy"
-              ? `<button onclick="confirmPerformer(${performer.id}, '${n}')" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px;" title="Confirm or correct name">✎</button>`
+              ? `<button onclick="confirmPerformer(${performer.id}, '${n}')" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px; display:inline-flex; align-items:center;" title="Confirm or correct name"><i data-lucide="pencil" class="icon-sm"></i></button>`
               : "");
           const ratingVal = String(performer.rating == null ? "" : performer.rating)
             .replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           const ratingHtml = `<div style="display:flex; gap:2px; align-items:center;">` +
-            `<button onclick="votePerformer(${performer.id},'up')" style="background:none; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:11px; cursor:pointer; line-height:1;">\ud83d\udc4d</button>` +
-            `<button onclick="votePerformer(${performer.id},'down')" style="background:none; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:11px; cursor:pointer; line-height:1;">\ud83d\udc4e</button>` +
-            `<input type="text" class="rating-input" id="rating-${performer.id}" value="${ratingVal}" maxlength="80" placeholder="tags, comma-separated…" title="${ratingTitle}" onchange="updateRating(${performer.id})" style="flex:1; min-width:60px;">` +
+            `<button onclick="votePerformer(${performer.id},'up')" style="background:none; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:11px; cursor:pointer; line-height:1; display:inline-flex; align-items:center;"><i data-lucide="thumbs-up" class="icon"></i></button>` +
+            `<button onclick="votePerformer(${performer.id},'down')" style="background:none; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:11px; cursor:pointer; line-height:1; display:inline-flex; align-items:center;"><i data-lucide="thumbs-down" class="icon"></i></button>` +
+            `<input type="text" class="rating-input" id="rating-${performer.id}" value="${ratingVal}" maxlength="80" placeholder="tags…" title="${ratingTitle}" onchange="updateRating(${performer.id})" style="flex:1; min-width:60px;">` +
             `</div>`;
           const akaRaw = performer.aka || "";
           const akaParts = akaRaw.split(",").map(s => s.trim()).filter(Boolean);
           let aka = akaParts.slice(0, 2).join(", ");
           if (akaParts.length > 2) aka += "…";
-          const akaTd = `<td style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text2); font-size:12px;" title="${akaRaw.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}">${aka}</td>`;
+          const akaTd = `<td class="aka-col" title="${akaRaw.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}">${aka}</td>`;
           return `<tr>` +
             `<td style="white-space:nowrap;">${nameHtml}</td>` +
             akaTd +
             `<td>${refdbBadge}${contentBadges}</td>` +
             `<td>${nat}</td>` +
-            `<td style="width:42px; max-width:42px; text-align:center; font-size:12px;">${age}</td>` +
-            `<td style="width:52px; max-width:52px; text-align:center; font-size:12px;">${performer.crawls || 0}</td>` +
-            `<td style="width:64px; max-width:64px; text-align:center; font-size:11px; color:var(--text2);" title="First seen: ${escHtml(performer.first_seen || "")}">${formatSeen(performer.first_seen)}</td>` +
-            `<td style="width:64px; max-width:64px; text-align:center; font-size:11px; color:var(--text2);" title="Last seen: ${escHtml(performer.last_seen || "")}">${formatSeen(performer.last_seen)}</td>` +
+            `<td class="slim-col">${age}</td>` +
+            `<td class="slim-col" style="width:52px; max-width:52px;">${performer.crawls || 0}</td>` +
+            `<td class="slim-col-wider" title="First seen: ${escHtml(performer.first_seen || "")}">${formatSeen(performer.first_seen)}</td>` +
+            `<td class="slim-col-wider" title="Last seen: ${escHtml(performer.last_seen || "")}">${formatSeen(performer.last_seen)}</td>` +
             `<td>${ratingHtml}</td>` +
-            `<td><button class="row-x" onclick="deletePerformer(${performer.id})" title="Delete performer">×</button></td>` +
+            `<td><button class="row-x" onclick="deletePerformer(${performer.id})" title="Delete performer"><i data-lucide="x" class="icon"></i></button></td>` +
             `</tr>`;
         });
         tbody.innerHTML = rows.join("");
@@ -846,11 +925,11 @@
                 var ml = document.getElementById("model-line");
                 if (m.profile_url) {
                   var shortUrl = m.profile_url.replace(/https?:\/\//, "");
-                  ml.innerHTML = '<span style="color:var(--text2);">📎 </span><a href="' + escHtml(m.profile_url) + '" target="_blank" style="color:var(--accent);">' + escHtml(shortUrl) + '</a>' +
-                    ' <button onclick="editModelInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Change model URL">✎</button>' +
-                    ' <button onclick="clearPerformerModel(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Clear model">✕</button>';
+                  ml.innerHTML = '<span style="color:var(--text2); display:inline-flex; align-items:center;"><i data-lucide="paperclip" class="icon"></i></span> <a href="' + escHtml(m.profile_url) + '" target="_blank" style="color:var(--accent);">' + escHtml(shortUrl) + '</a>' +
+                    ' <button onclick="editModelInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px; display:inline-flex; align-items:center;" title="Change model URL"><i data-lucide="pencil" class="icon-sm"></i></button>' +
+                    ' <button onclick="clearPerformerModel(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;" title="Clear model"><i data-lucide="x" class="icon"></i></button>';
                 } else {
-                  ml.innerHTML = '<span style="color:var(--text2);">📎 Model: none</span>' +
+                  ml.innerHTML = '<span style="color:var(--text2);"><i data-lucide="paperclip" class="icon"></i> Model: none</span>' +
                     ' <button onclick="editModelInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;">+ Assign</button>';
                 }
               }).catch(function() {});
@@ -861,7 +940,7 @@
               var maxShow = 8;
               var tagChips = tagList.slice(0, maxShow).map(function(t) { return makeTagChip(t); });
               var moreCount = tagList.length - maxShow;
-              ts.innerHTML = '<span style="color:var(--text2);">🏷️ </span>';
+              ts.innerHTML = '<span style="color:var(--text2);"><i data-lucide="tag" class="icon"></i> </span>';
               for (var ti = 0; ti < tagChips.length; ti++) { ts.appendChild(tagChips[ti]); }
               if (moreCount > 0) {
                 var more = document.createElement("span");
@@ -870,7 +949,7 @@
                 more.onclick = (function(tl, pid) {
                   return function() {
                     var ts2 = document.getElementById("tags-section");
-                    ts2.innerHTML = '<span style="color:var(--text2);">🏷️ </span>';
+                    ts2.innerHTML = '<span style="color:var(--text2);"><i data-lucide="tag" class="icon"></i> </span>';
                     for (var j = 0; j < tl.length; j++) { ts2.appendChild(makeTagChip(tl[j])); }
                     ts2.appendChild(editTagsBtn(pid, tl.join(", ")));
                   };
@@ -879,7 +958,7 @@
               }
               ts.appendChild(editTagsBtn(performerId, f.tags));
             } else {
-              ts.innerHTML = '<span style="color:var(--text2);">🏷️ No tags</span>' +
+              ts.innerHTML = '<span style="color:var(--text2);"><i data-lucide="tag" class="icon"></i> No tags</span>' +
                 ' <button onclick="editTagsInline(' + performerId + ')" style="background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer; border-radius:4px; padding:1px 6px; font-size:11px;">+ Add</button>';
             }
           })
@@ -1042,9 +1121,19 @@
               ${thumb ? `<img src="${thumb}" alt="" style="width:50px; height:38px; object-fit:cover; border-radius:4px; flex-shrink:0; background:var(--surface2);" loading="lazy" onerror="this.style.display='none'">` : ""}
               <a href="${item.item_url}" target="_blank" style="flex:1; color:var(--text); text-decoration:none; font-size:13px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;" title="${titleEsc}">${title}</a>
               <div style="display:flex; gap:4px; flex-shrink:0;">
-                <button onclick="reassignItem(${item.id}, '${titleEsc}')" title="Reassign" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">→</button>
-                <button onclick="unassignItem(${item.id})" title="Unassign" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">⊘</button>
-                <button onclick="deleteItem(${item.id})" title="Delete" style="background:none; border:1px solid var(--red); color:var(--red); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">✕</button>
+                <button onclick="hintItem(${item.id})" title="LLM hint" style="background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">💡</button>
+                <button onclick="reassignItem(${item.id}, '${titleEsc}')" title="Reassign" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;"><i data-lucide="arrow-right" class="icon"></i></button>
+                <button onclick="unassignItem(${item.id})" title="Unassign" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;"><i data-lucide="circle-x" class="icon"></i></button>
+                <button onclick="deleteItem(${item.id})" title="Delete" style="background:none; border:1px solid var(--red); color:var(--red); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;"><i data-lucide="x" class="icon"></i></button>
+              </div>
+            </div>
+            <div id="item-hint-${item.id}" style="display:none; margin-left:60px; padding:6px 10px; background:var(--bg); border-radius:6px; border:1px solid var(--border); margin-top:4px; margin-bottom:4px; font-size:12px;">
+              <span id="item-hint-text-${item.id}"></span>
+              <span id="item-hint-fuzzy-${item.id}" style="display:flex; gap:4px; flex-wrap:wrap; margin-top:4px;"></span>
+              <div style="display:flex; gap:4px; margin-top:4px;">
+                <input type="text" id="item-hint-input-${item.id}" placeholder="Edit name..." style="font-size:12px; padding:2px 6px; border-radius:4px; border:1px solid var(--border); background:var(--surface); color:var(--text); width:140px;">
+                <button onclick="acceptItemHint(${item.id})" style="background:var(--green); border:none; color:#000; cursor:pointer; padding:2px 8px; border-radius:4px; font-size:11px;"><i data-lucide="check" class="icon"></i></button>
+                <button onclick="rejectItemHint(${item.id})" style="background:var(--red); border:none; color:#fff; cursor:pointer; padding:2px 8px; border-radius:4px; font-size:11px;">✗</button>
               </div>
             </div>
           `;
@@ -1078,7 +1167,7 @@
               box.style.display = "block"; return;
             }
             box.innerHTML = data.performers.map(p =>
-              `<div class="suggestion-item" onmousedown="selectReassignModalTarget('${p.name.replace(/'/g, "\\'")}')">${escHtml(p.name)} <span style="color:var(--text2); font-size:11px;">#${p.id} · ${p.total_items} items</span></div>`
+              `<div class="suggestion-item" onmousedown="selectReassignModalTarget('${p.name.replace(/'/g, "\\'")}')">${escHtml(p.name)} <span class="text2 text-xs">#${p.id} · ${p.total_items} items</span></div>`
             ).join("");
             box.style.display = "block";
           });
@@ -1111,6 +1200,59 @@
           .then(data => { if (data.error) { alert(data.error); return; } showToast(data.message); loadItemsList(currentPerformerId); loadPerformers(); })
           .catch(() => alert("Failed"));
       }
+      function hintItem(itemId) {
+        const box = document.getElementById('item-hint-' + itemId);
+        if (!box) return;
+        const isHidden = box.style.display === 'none';
+        document.querySelectorAll('[id^="item-hint-"]').forEach(el => el.style.display = 'none');
+        if (isHidden) {
+          box.style.display = 'block';
+          const textEl = document.getElementById('item-hint-text-' + itemId);
+          const fuzzyEl = document.getElementById('item-hint-fuzzy-' + itemId);
+          const input = document.getElementById('item-hint-input-' + itemId);
+          textEl.innerHTML = '<span class="spinner"></span> Thinking...';
+          fuzzyEl.innerHTML = '';
+          input.value = '';
+          fetch(api('api/hint/' + itemId), { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+              if (data.hint) {
+                const flags = data.valid
+                  ? '<span style="color:var(--green); margin-left:6px;"><i data-lucide="check" class="icon"></i> valid</span>'
+                  : '<span style="color:var(--orange); margin-left:6px;"><i data-lucide="alert-triangle" class="icon"></i> review</span>';
+                textEl.innerHTML = '<strong>' + escHtml(data.hint) + '</strong>' + flags;
+                input.value = data.hint;
+                if (data.fuzzy_results && data.fuzzy_results.length > 0) {
+                  fuzzyEl.innerHTML = data.fuzzy_results.map(r =>
+                    '<span style="font-size:11px; padding:1px 6px; border-radius:999px; border:1px solid var(--border); background:var(--surface); cursor:pointer;" onclick="acceptItemHint(' + itemId + ', ' + r.performer_id + ')">' + escHtml(r.name) + ' <small style="opacity:0.6">' + r.score + '%</small></span>'
+                  ).join('');
+                } else if (data.fuzzy_match) {
+                  fuzzyEl.innerHTML = '<span style="font-size:11px; padding:1px 6px; border-radius:999px; border:1px solid var(--border); background:var(--surface); cursor:pointer;" onclick="acceptItemHint(' + itemId + ', ' + data.fuzzy_match.performer_id + ')">' + escHtml(data.fuzzy_match.name) + ' <small style="opacity:0.6">' + data.fuzzy_match.score + '%</small></span>';
+                } else {
+                  fuzzyEl.innerHTML = '<span style="font-size:11px; color:var(--text2);">No DB match</span>';
+                }
+              } else {
+                textEl.innerHTML = '<span style="color:var(--text2);">' + (data.reason || 'No hint') + '</span>';
+              }
+            })
+            .catch(() => { textEl.innerHTML = '<span style="color:var(--red);">Error getting hint</span>'; });
+        } else {
+          box.style.display = 'none';
+        }
+      }
+      function acceptItemHint(itemId, explicitPid) {
+        const input = document.getElementById('item-hint-input-' + itemId);
+        const name = input.value.trim();
+        if (!name) return;
+        fetch(api('api/items/' + itemId + '/reassign'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_name: name }) })
+          .then(r => r.json())
+          .then(data => { if (data.error) { alert(data.error); return; } showToast(data.message); loadItemsList(currentPerformerId); loadPerformers(); })
+          .catch(() => alert('Assign failed'));
+      }
+      function rejectItemHint(itemId) {
+        const box = document.getElementById('item-hint-' + itemId);
+        if (box) box.style.display = 'none';
+      }
       function goBackToPerformers() {
         document.getElementById("performers-table").style.display = "table";
         document.getElementById("performer-items-section").style.display = "none";
@@ -1122,6 +1264,101 @@
         setBrowseChrome(true);
         document.getElementById("performers-table").style.display = "table";
         loadPerformers();
+      }
+      function showDAP() {
+        hideSections();
+        setBrowseChrome(false);
+        document.getElementById("dap-section").style.display = "block";
+        loadDAP();
+      }
+      function loadDAP() {
+        const view = document.getElementById("dap-view").value;
+        document.getElementById("dap-freshest").style.display = view === "freshest" ? "block" : "none";
+        document.getElementById("dap-latest").style.display = view === "latest" ? "block" : "none";
+        document.getElementById("dap-performances").style.display = view === "performances" ? "block" : "none";
+        if (view === "freshest") loadDAPFreshest();
+        else if (view === "latest") loadDAPLatest();
+        else if (view === "performances") loadDAPPerformances();
+      }
+      function loadDAPFreshest() {
+        const limit = parseInt(document.getElementById("dap-limit").value) || 50;
+        fetch(api("api/dap/freshest?limit=" + limit))
+          .then(r => r.json())
+          .then(data => {
+            const tbody = document.getElementById("dap-freshest-body");
+            tbody.innerHTML = data.map(p => `
+              <tr>
+                <td><a href="${BASE}/#performer-${p.id}" target="blank" style="color:var(--accent);">${escHtml(p.name)}</a></td>
+                <td>${p.first_seen ? p.first_seen.split(" ")[0] : ""}</td>
+                <td>${p.last_seen ? p.last_seen.split(" ")[0] : ""}</td>
+                <td>${p.crawls || 0}</td>
+                <td>${p.item_count || 0}</td>
+                <td>${extractDAPTags(p.tags)}</td>
+              </tr>
+            `).join("");
+          });
+      }
+      function loadDAPLatest() {
+        const limit = parseInt(document.getElementById("dap-limit").value) || 50;
+        fetch(api("api/dap/latest?limit=" + limit))
+          .then(r => r.json())
+          .then(data => {
+            const tbody = document.getElementById("dap-latest-body");
+            tbody.innerHTML = data.map(p => `
+              <tr>
+                <td><a href="${BASE}/#performer-${p.id}" target="blank" style="color:var(--accent);">${escHtml(p.name)}</a></td>
+                <td>${p.first_seen ? p.first_seen.split(" ")[0] : ""}</td>
+                <td>${p.last_seen ? p.last_seen.split(" ")[0] : ""}</td>
+                <td>${p.crawls || 0}</td>
+                <td>${p.item_count || 0}</td>
+                <td>${extractDAPTags(p.tags)}</td>
+              </tr>
+            `).join("");
+          });
+      }
+      function loadDAPPerformances() {
+        const limit = parseInt(document.getElementById("dap-limit").value) || 100;
+        const tag = document.getElementById("dap-tag").value;
+        const days = parseInt(document.getElementById("dap-days").value) || null;
+        let url = "api/dap/performances?limit=" + limit;
+        if (tag) url += "&tag=" + encodeURIComponent(tag);
+        if (days) url += "&days=" + days;
+        fetch(api(url))
+          .then(r => r.json())
+          .then(data => {
+            const tbody = document.getElementById("dap-performances-body");
+            tbody.innerHTML = data.map(item => `
+              <tr>
+                <td><a href="${item.item_url}" target="blank" style="color:var(--accent);">${escHtml(item.title || "(no title)")}</a></td>
+                <td><a href="${BASE}/#performer-${item.performer_id}" target="blank" style="color:var(--accent);">${escHtml(item.performer_name)}</a></td>
+                <td>${item.item_date || ""}</td>
+                <td>${item.added_date ? item.added_date.split(" ")[0] : ""}</td>
+                <td>${extractDAPTags(item.performer_tags)}</td>
+              </tr>
+            `).join("");
+          });
+      }
+      function extractDAPTags(tagsStr) {
+        if (!tagsStr) return "";
+        return tagsStr.split(", ").filter(t => t.toLowerCase().includes("dap") || t.toLowerCase().includes("tap") || t.toLowerCase().includes("double anal")).join(", ");
+      }
+      function loadDAPTags() {
+        fetch(api("api/dap/tags"))
+          .then(r => r.json())
+          .then(tags => {
+            const select = document.getElementById("dap-tag");
+            tags.forEach(t => {
+              const opt = document.createElement("option");
+              opt.value = t.tag;
+              opt.textContent = t.tag + " (" + t.count + ")";
+              select.appendChild(opt);
+            });
+          });
+      }
+      var dapDebounceTimer;
+      function debounceDAP() {
+        clearTimeout(dapDebounceTimer);
+        dapDebounceTimer = setTimeout(loadDAP, 300);
       }
       function showStats() {
         hideSections();
@@ -1277,7 +1514,7 @@
               <td style="padding:8px 10px; border-bottom:1px solid var(--border);">${escHtml(t.tag)}</td>
               <td style="padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text2);">${escHtml(t.reason || "")}</td>
               <td style="padding:8px 10px; border-bottom:1px solid var(--border); text-align:right;">
-                <button class="btn btn-danger" style="padding:3px 10px; font-size:12px;" onclick="deleteNonPerformerTag(${t.id}, '${escHtml(t.tag)}')">✕</button>
+                <button class="btn btn-danger" style="padding:3px 10px; font-size:12px;" onclick="deleteNonPerformerTag(${t.id}, '${escHtml(t.tag)}')"><i data-lucide="x" class="icon"></i></button>
               </td>`;
             tbody.appendChild(tr);
           });
@@ -1315,11 +1552,11 @@
       // ── RefDB refresh ──
       function refreshRefDB() {
         const btn = event.target;
-        btn.textContent = "⏳"; btn.disabled = true;
+        btn.innerHTML = "<i data-lucide='loader' class='icon'></i>"; btn.disabled = true;
         fetch(api("api/performers/refresh-refdb"), { method: "POST" })
           .then(r => r.json())
-          .then(data => { btn.textContent = "🔄 refdb"; btn.disabled = false; if (data.count !== undefined) { alert(`RefDB status refreshed: ${data.count} performers updated`); loadPerformers(); } })
-          .catch(() => { btn.textContent = "🔄 refdb"; btn.disabled = false; });
+          .then(data => { btn.innerHTML = "<i data-lucide='refresh-cw' class='icon'></i> refdb"; btn.disabled = false; if (data.count !== undefined) { alert(`RefDB status refreshed: ${data.count} performers updated`); loadPerformers(); } })
+          .catch(() => { btn.innerHTML = "<i data-lucide='refresh-cw' class='icon'></i> refdb"; btn.disabled = false; });
       }
 
       // ── Performer Edit / Merge ──
@@ -1462,7 +1699,7 @@
               if (!data || data.length === 0) { suggestions.innerHTML = `<div style="padding:8px;color:#999;">No existing performers — will create new</div>`; suggestions.style.display = "block"; return; }
               suggestions.innerHTML = data.filter(p => p.id !== editPerformerId).map(p =>
                 `<div class="suggestion-item" data-id="${p.id}" data-name="${p.name.replace(/"/g, "&quot;")}" onmousedown="selectReassignTarget('${p.name.replace(/'/g, "\\'")}')">
-                  #${p.id} ${p.name} ${p.refdb_match === 'matched' ? '✓' : ''} ${p.refdb_match === 'fuzzy' ? '~' : ''}
+                  #${p.id} ${p.name} ${p.refdb_match === 'matched' ? '<i data-lucide="check" class="icon"></i>' : ''} ${p.refdb_match === 'fuzzy' ? '~' : ''}
                 </div>`).join("");
               suggestions.style.display = "block";
             }).catch(() => {});
@@ -1476,10 +1713,10 @@
         if (!url) return;
         const btn = document.getElementById("fetch-analvids-btn");
         const results = document.getElementById("lookup-results");
-        btn.textContent = "⏳"; btn.disabled = true; results.style.display = "block"; results.innerHTML = `<span style="color:var(--text2);">Fetching...</span>`;
+        btn.innerHTML = "<i data-lucide='loader' class='icon'></i>"; btn.disabled = true; results.style.display = "block"; results.innerHTML = `<span style="color:var(--text2);">Fetching...</span>`;
         fetch(api(`api/performers/lookup-analvids-url?url=${encodeURIComponent(url)}`))
           .then(r => r.json()).then(data => {
-            btn.textContent = "🔍 Fetch"; btn.disabled = false;
+            btn.innerHTML = "<i data-lucide='search' class='icon'></i> Fetch"; btn.disabled = false;
             if (data.error) { results.innerHTML = `<span style="color:var(--red);">${data.error}</span>`; return; }
             results.innerHTML = `
               <div style="display:flex; gap:12px; align-items:flex-start;">
@@ -1487,13 +1724,13 @@
                 <div style="flex:1;">
                   <div style="margin-bottom:6px;"><strong>${data.name}</strong> ${data.nationality ? `<span style="color:var(--text2);">${data.nationality.toUpperCase()}</span>` : ""} ${data.scenes ? `<span style="color:var(--text2);">· ${data.scenes} scenes</span>` : ""}</div>
                   <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                    <button class="btn" onclick="setPerformerModel('${data.url}')" style="background:#4CAF50; color:white; font-size:12px; padding:6px 12px;">📎 Set as model</button>
-                    <button class="btn" onclick="mergeFromAnalvids('${data.name.replace(/'/g, "\\'")}', '${data.url}')" style="background:#ff9800; color:white; font-size:12px; padding:6px 12px;">🔀 Merge into ${data.name}</button>
+                    <button class="btn" onclick="setPerformerModel('${data.url}')" style="background:#4CAF50; color:white; font-size:12px; padding:6px 12px;"><i data-lucide="paperclip" class="icon"></i> Set as model</button>
+                    <button class="btn" onclick="mergeFromAnalvids('${data.name.replace(/'/g, "\\'")}', '${data.url}')" style="background:#ff9800; color:white; font-size:12px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;"><i data-lucide="git-merge" class="icon"></i> Merge into ${data.name}</button>
                     <a href="${data.url}" target="_blank" style="font-size:12px; color:var(--accent);">View on analvids ↗</a>
                   </div>
                 </div>
               </div>`;
-          }).catch(() => { btn.textContent = "🔍 Fetch"; btn.disabled = false; results.innerHTML = `<span style="color:var(--red);">Failed — try again</span>`; });
+          }).catch(() => { btn.innerHTML = "<i data-lucide='search' class='icon'></i> Fetch"; btn.disabled = false; results.innerHTML = `<span style="color:var(--red);">Failed — try again</span>`; });
       }
       function setPerformerModel(profileUrl) {
         const id = editPerformerId;
@@ -1521,12 +1758,12 @@
             if (d.error) { alert("Error: " + d.error); return; }
             showToast(d.message || "Model cleared");
             const modelLine = document.getElementById("model-line");
-            if (modelLine) modelLine.innerHTML = `<span style="color:var(--text2);">📎 Model: none</span>`;
+            if (modelLine) modelLine.innerHTML = `<span style="color:var(--text2);"><i data-lucide="paperclip" class="icon"></i> Model: none</span>`;
           }).catch(() => alert("Failed to clear model"));
       }
       function mergeFromAnalvids(targetName, targetUrl) {
         const currentName = document.getElementById("edit-performer-name").value.trim();
-        const ok = confirm(`Merge "${currentName}" → "${targetName}"?\n\nAll items move to ${targetName}, then ${currentName} is deleted.`);
+        const ok = confirm(`Merge "${currentName}" <i data-lucide="arrow-right" class="icon"></i> "${targetName}"?\n\nAll items move to ${targetName}, then ${currentName} is deleted.`);
         if (!ok) return;
         const id = editPerformerId; closeEditModal();
         fetch(api(`api/performers/${id}/reassign`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_name: targetName, delete_source: true }) })
@@ -1574,15 +1811,15 @@
                 <td>${escHtml(m.years_active || "")}</td>
                 <td style="font-size:12px; color:var(--text2);">${escHtml(tags)}${(m.tags || "").split(", ").length > 5 ? "..." : ""}</td>
                 <td>${m.profile_scene_count || m.dir_scene_count || 0}</td>
-                <td>${m.profile_url ? `<a href="${m.profile_url}" target="_blank">🔗</a>` : ""}</td>`;
+                <td>${m.profile_url ? `<a href="${m.profile_url}" target="_blank"><i data-lucide="link" class="icon"></i></a>` : ""}</td>`;
               tbody.appendChild(tr);
             });
             const totalPages = Math.ceil(resp.total / resp.per_page);
             const pg = document.getElementById("refdb-pagination");
             pg.innerHTML = "";
-            if (resp.page > 1) { const b = document.createElement("button"); b.className = "btn"; b.textContent = "← Prev"; b.onclick = () => { refdbPage = resp.page - 1; loadRefDB(); }; pg.appendChild(b); }
+            if (resp.page > 1) { const b = document.createElement("button"); b.className = "btn"; b.innerHTML = '<i data-lucide="arrow-left" class="icon"></i> Prev'; b.onclick = () => { refdbPage = resp.page - 1; loadRefDB(); }; pg.appendChild(b); }
             const span = document.createElement("span"); span.style.cssText = "padding:7px 12px; font-size:13px; color:var(--text2);"; span.textContent = `Page ${resp.page} of ${totalPages}`; pg.appendChild(span);
-            if (resp.page < totalPages) { const b = document.createElement("button"); b.className = "btn"; b.textContent = "Next →"; b.onclick = () => { refdbPage = resp.page + 1; loadRefDB(); }; pg.appendChild(b); }
+            if (resp.page < totalPages) { const b = document.createElement("button"); b.className = "btn"; b.innerHTML = 'Next <i data-lucide="arrow-right" class="icon"></i>'; b.onclick = () => { refdbPage = resp.page + 1; loadRefDB(); }; pg.appendChild(b); }
           }).catch(() => {});
       }
 
@@ -1601,13 +1838,13 @@
             data.forEach(item => {
               const row = document.createElement("tr");
               row.innerHTML = `
-                <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${item.id}</td>
-                <td style="padding:6px 8px; border-bottom:1px solid var(--border);"><a href="${item.item_url}" target="_blank" style="color:var(--accent);">${item.item_url}</a></td>
-                <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${item.title || ""}</td>
-                <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${item.added_date || ""}</td>
-                <td style="padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap;">
-                  <button onclick="reassignItem(${item.id}, '${(item.title || "").replace(/'/g, "\\'").substring(0, 40)}')" style="background:none; border:1px solid var(--border); color:var(--text2); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">→ move</button>
-                  <button onclick="deleteItem(${item.id})" style="background:none; border:1px solid var(--red); color:var(--red); cursor:pointer; padding:2px 6px; border-radius:4px; font-size:11px;">✕ delete</button>
+                <td class="td">${item.id}</td>
+                <td class="td"><a href="${item.item_url}" target="_blank">${item.item_url}</a></td>
+                <td class="td">${item.title || ""}</td>
+                <td class="td">${item.added_date || ""}</td>
+                <td class="td nowrap">
+                  <button onclick="reassignItem(${item.id}, '${(item.title || "").replace(/'/g, "\\'").substring(0, 40)}')" class="btn-ghost-sm"><i data-lucide="arrow-right" class="icon"></i> move</button>
+                  <button onclick="deleteItem(${item.id})" class="btn-danger-text"><i data-lucide="x" class="icon"></i> delete</button>
                 </td>`;
               tbody.appendChild(row);
             });
